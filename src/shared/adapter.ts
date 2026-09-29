@@ -10,23 +10,23 @@
  * client it built and leave an injected one alone.
  */
 
-import type { CompressionConfig } from './codec/compression';
-import { type AdapterName, offloaderConfigFor } from './codec/s3/config';
-import { S3Offloader } from './codec/s3/offloader';
-import { DEFAULT_READ_CONCURRENCY } from './concurrency';
+import type { CompressionConfig } from './codec/compression.js';
+import { type AdapterName, offloaderConfigFor } from './codec/s3/config.js';
+import { S3Offloader } from './codec/s3/offloader.js';
+import { DEFAULT_READ_CONCURRENCY } from './concurrency.js';
 import {
   type DynamoDBDocumentLike,
   resolveDynamoDBClient,
   warnOnStackedRetries,
-} from './dynamodb/client';
-import { DEFAULT_INDEX_SHARDS } from './dynamodb/recency-index';
-import { type RetryOptions, resolveRetryPolicy } from './dynamodb/retry';
-import { toError } from './errors/base-error';
-import { type Logger, resolveLogger } from './logging/logger';
-import type { BaseAdapterOptions, CodecOptions } from './options';
-import { assertBaseCollaborators } from './validation/collaborators';
-import { assertBaseAdapterOptions } from './validation/options';
-import { lifecycleExpirationDays, type TtlOption } from './validation/ttl';
+} from './dynamodb/client.js';
+import { DEFAULT_INDEX_SHARDS } from './dynamodb/recency-index.js';
+import { type RetryOptions, resolveRetryPolicy } from './dynamodb/retry.js';
+import { toError } from './errors/base-error.js';
+import { type Logger, resolveLogger } from './logging/logger.js';
+import type { BaseAdapterOptions, CodecOptions } from './options.js';
+import { assertBaseCollaborators } from './validation/collaborators.js';
+import { assertBaseAdapterOptions } from './validation/options.js';
+import { lifecycleExpirationDays, type TtlOption } from './validation/ttl.js';
 
 /** Anything an adapter holds open and must hand back when it is torn down. */
 export interface Releasable {

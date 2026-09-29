@@ -93,18 +93,26 @@ describe('getDeltaChannelHistory input validation', () => {
     }
   });
 
-  it('refuses an options key this package does not read', async () => {
+  it('ignores an options key LangGraph may add (decision record 28)', async () => {
     const { saver } = newSaver();
     await expect(
       saver.getDeltaChannelHistory({
         config: { configurable: { thread_id: 't' } },
-        channels: ['c'],
+        channels: [],
         foo: 1,
       } as never),
-    ).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-      context: { field: 'options.foo' },
-    });
+    ).resolves.toEqual({});
+  });
+
+  it('still refuses a malformed key it reads, beside one it does not', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't' } },
+        channels: 'c',
+        foo: 1,
+      } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'channels' } });
   });
 
   /**

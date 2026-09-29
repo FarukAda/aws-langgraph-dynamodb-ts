@@ -11,7 +11,7 @@
 
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options.js';
 
 /** Options for {@link DynamoDBChatMessageHistory}. */
 export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &

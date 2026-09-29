@@ -10,17 +10,17 @@
 
 import type { Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { validationError } from '../../shared/errors/errors';
-import { passesFilter } from './filter';
-import type { ParsedSearch } from './parse';
+import { nowSeconds } from '../../shared/clock.js';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema.js';
+import { DynamoDBLangGraphError } from '../../shared/errors/base-error.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { passesFilter } from './filter.js';
+import type { ParsedSearch } from './parse.js';
 import {
   parseWholeStoreRow,
   namespaceMatchesPrefix,
@@ -28,9 +28,9 @@ import {
   scopedQuery,
   type StoreItemRow,
   storeScan,
-} from './rows';
-import { cosineSimilarity } from './semantic-search';
-import type { StoreContext } from './setup';
+} from './rows.js';
+import { cosineSimilarity } from './semantic-search.js';
+import type { StoreContext } from './setup.js';
 
 /**
  * How far a collection must go. A plain page is complete once `need`

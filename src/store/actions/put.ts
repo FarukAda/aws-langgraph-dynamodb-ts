@@ -10,15 +10,15 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { nowIso } from '../../shared/clock';
-import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import type { JsonValue } from '../internal/filter';
-import { deleteStoreItem, persistRow } from '../internal/item-write';
-import type { ParsedDelete, ParsedPut } from '../internal/parse';
-import { buildStoreRow, itemRowKey, readExisting } from '../internal/rows';
-import { embedPassages } from '../internal/semantic-search';
-import type { StoreContext } from '../internal/setup';
-import { itemVector, syncItemVector } from '../internal/vector-index';
+import { nowIso } from '../../shared/clock.js';
+import { calculateTtlTimestamp } from '../../shared/validation/ttl.js';
+import type { JsonValue } from '../internal/filter.js';
+import { deleteStoreItem, persistRow } from '../internal/item-write.js';
+import type { ParsedDelete, ParsedPut } from '../internal/parse.js';
+import { buildStoreRow, itemRowKey, readExisting } from '../internal/rows.js';
+import { embedPassages } from '../internal/semantic-search.js';
+import type { StoreContext } from '../internal/setup.js';
+import { itemVector, syncItemVector } from '../internal/vector-index.js';
 
 /**
  * The vectors a put stores on the row: one per extracted path, scored by best

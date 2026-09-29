@@ -19,9 +19,9 @@ import {
   type DescriptorRef,
   encodePayload,
   type PayloadDescriptor,
-} from '../../shared/codec/codec';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+} from '../../shared/codec/codec.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { withDynamoDBRetry } from '../../shared/dynamodb/retry.js';
 import {
   ADAPTER_TAGS,
   assertReadableRow,
@@ -30,9 +30,9 @@ import {
   ROW_FORMAT_VERSION,
   type RowKey,
   SORT_KEY_ATTRIBUTE,
-} from '../../shared/dynamodb/table-schema';
-import type { JsonValue } from './filter';
-import type { StoreContext } from './setup';
+} from '../../shared/dynamodb/table-schema.js';
+import type { JsonValue } from './filter.js';
+import type { StoreContext } from './setup.js';
 
 /**
  * The attribute an item row carries its revision token in, rewritten on every

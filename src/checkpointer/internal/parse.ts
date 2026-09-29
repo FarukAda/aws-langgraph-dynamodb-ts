@@ -23,20 +23,19 @@ import {
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
-} from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { assertSignalLike } from '../../shared/validation/collaborators';
-import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
+} from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { assertSignalLike } from '../../shared/validation/collaborators.js';
+import { assertObjectShape } from '../../shared/validation/option-shape.js';
 import {
   type PageLimit,
   parseIdentifier,
   parseKeySegment,
   parseLimit,
   parseStringArray,
-} from '../../shared/validation/primitives';
-import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types';
-import { writeSortKeyBytes } from './rows';
-import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_LIST_KEYS } from './setup';
+} from '../../shared/validation/primitives.js';
+import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types.js';
+import { writeSortKeyBytes } from './rows.js';
 
 declare const threadIdBrand: unique symbol;
 declare const checkpointNsBrand: unique symbol;
@@ -443,7 +442,7 @@ export interface ListScope {
 function beforeCheckpointId(before: RunnableConfig | undefined): CheckpointId | undefined {
   if (before === undefined) return undefined;
   assertObjectShape(before, 'before');
-  const checkpointId = before.configurable?.checkpoint_id;
+  const checkpointId = (before.configurable as CheckpointConfigurable | undefined)?.checkpoint_id;
   if (isAbsentId(checkpointId)) return undefined;
   return parseCheckpointId(checkpointId, 'before');
 }
@@ -462,14 +461,17 @@ function beforeCheckpointId(before: RunnableConfig | undefined): CheckpointId | 
  * Returns: the scope every later step of the listing reads instead of the raw
  * config.
  *
- * Throws: `VALIDATION`, config first: as {@link parseConfig}; then
- * `options.<key>` for a key this package does not read, `filter`, `limit`,
- * `before`.
+ * Throws: `VALIDATION`, config first: as {@link parseConfig}; then `options`
+ * for options that are not an object, `filter`, `limit`, `before`. A key
+ * `CheckpointListOptions` does not declare is ignored rather than refused:
+ * LangGraph defines these options and passes its own straight through
+ * (`getStateHistory` hands them to `list`), so a key a later LangGraph adds
+ * must not turn the call into a refusal (decision record 28).
  */
 export function parseListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
   const { threadId, checkpointNs, checkpointId, signal } = parseConfig(config);
   if (options !== undefined) {
-    assertShape(options, SAVER_LIST_KEYS, 'options');
+    assertObjectShape(options, 'options');
     if (options.filter !== undefined) assertObjectShape(options.filter, 'filter');
   }
   // Zero floor: `list` is an iterator a caller drains, so a zero page ends it
@@ -498,17 +500,20 @@ export interface DeltaHistoryRequest {
  * and only once a channel is named: an empty `channels` reads nothing, so it
  * refuses nothing either.
  *
- * Accepts: `options` — an object naming exactly `config` and `channels`.
- * `options.config` — shaped as {@link parseConfig} requires. `options.channels`
- * — an array of strings; an empty one is a legitimate request.
+ * Accepts: `options` — an object carrying `config` and `channels`; any other
+ * key is ignored, since LangGraph defines this object and calls the method
+ * itself, so a key a later LangGraph adds must not refuse the call (decision
+ * record 28). `options.config` — shaped as {@link parseConfig} requires.
+ * `options.channels` — an array of strings; an empty one is a legitimate
+ * request.
  *
  * Returns: the config as given and a copy of the channels.
  *
- * Throws: `VALIDATION` naming `options`, `options.<key>`, `config`,
- * `configurable`, `signal` or `channels`.
+ * Throws: `VALIDATION` naming `options`, `config`, `configurable`, `signal` or
+ * `channels`.
  */
 export function parseDeltaHistoryRequest(options: DeltaChannelHistoryOptions): DeltaHistoryRequest {
-  assertShape(options, DELTA_CHANNEL_HISTORY_KEYS, 'options');
+  assertObjectShape(options, 'options');
   assertConfigShape(options.config);
   return { config: options.config, channels: parseStringArray(options.channels, 'channels') };
 }

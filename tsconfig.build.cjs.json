@@ -1,0 +1,15 @@
+{
+  // The CommonJS half of the dual build (docs/decisions, record 29): the same
+  // sources and declarations, emitted as CommonJS into dist/cjs, where
+  // scripts/mark-cjs.mjs writes the package.json that makes Node and
+  // TypeScript read that subtree as CommonJS under the root "type": "module".
+  // `module: CommonJS` needs a resolution other than NodeNext; `bundler` is the
+  // one TypeScript 6 and 7 both accept, and it resolves the same `.js`
+  // specifiers the ESM build requires.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Bundler",
+    "outDir": "dist/cjs"
+  }
+}

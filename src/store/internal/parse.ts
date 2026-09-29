@@ -22,9 +22,9 @@ import {
   KEY_SEPARATOR,
   MAX_KEY_SEGMENT_BYTES,
   MAX_SORT_KEY_BYTES,
-} from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
+} from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { assertObjectShape } from '../../shared/validation/option-shape.js';
 import {
   type PageLimit,
   parseIdentifier,
@@ -32,11 +32,10 @@ import {
   parseLimit,
   parseString,
   parseStringArray,
-} from '../../shared/validation/primitives';
-import type { ListNamespacesOptions } from '../types';
-import type { JsonValue } from './filter';
-import { sortKey } from './rows';
-import { STORE_LIST_NAMESPACES_KEYS } from './setup';
+} from '../../shared/validation/primitives.js';
+import type { ListNamespacesOptions } from '../types.js';
+import type { JsonValue } from './filter.js';
+import { sortKey } from './rows.js';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -326,16 +325,19 @@ export function parseListOperation(op: ListNamespacesOperation): ParsedList {
 /**
  * Parse the options of `listNamespaces`.
  *
- * Accepts: `options` — only `prefix`, `suffix`, `maxDepth`, `limit` and
- * `offset`; `limit` defaults to 100 and `offset` to 0.
+ * Accepts: `options` — an object; `prefix`, `suffix`, `maxDepth`, `limit` and
+ * `offset` are read, `limit` defaulting to 100 and `offset` to 0. Any other key
+ * is ignored rather than refused: `BaseStore.listNamespaces` declares these
+ * options, so a key a later LangGraph adds must not refuse the call (decision
+ * record 28).
  *
  * Returns: the listing the options describe.
  *
- * Throws: `VALIDATION` naming `options.<key>` for a key this package does not
- * read, then as {@link parseListOperation}.
+ * Throws: `VALIDATION` naming `options` for options that are not an object,
+ * then as {@link parseListOperation}.
  */
 export function parseListNamespacesOptions(options: ListNamespacesOptions): ParsedList {
-  assertShape(options, STORE_LIST_NAMESPACES_KEYS, 'options');
+  assertObjectShape(options, 'options');
   const { prefix, suffix, maxDepth, limit = DEFAULT_LIST_LIMIT, offset = 0 } = options;
   const matchConditions: MatchCondition[] = [];
   if (prefix !== undefined) matchConditions.push({ matchType: 'prefix', path: prefix });

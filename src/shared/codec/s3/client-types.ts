@@ -48,7 +48,7 @@ export function s3ClientOptions(config: S3ClientConfigLike | undefined): S3Clien
 }
 
 /** What every SDK command object carries: its `input`. */
-export interface S3CommandLike {
+interface S3CommandLike {
   input: object;
 }
 

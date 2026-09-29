@@ -10,16 +10,16 @@
 
 import type { Item } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
+import { nowSeconds } from '../../shared/clock.js';
 import {
   PayloadLocation,
   isMissingObjectError,
   isRefusedObjectError,
   type DescriptorRef,
-} from '../../shared/codec/codec';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
-import { isExpiredRow } from '../../shared/dynamodb/table-schema';
-import type { StoreAddress } from './parse';
+} from '../../shared/codec/codec.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema.js';
+import type { StoreAddress } from './parse.js';
 import {
   itemRowKey,
   parseWholeStoreRow,
@@ -27,8 +27,8 @@ import {
   readStoreItem,
   sortKey,
   type StoreItemRow,
-} from './rows';
-import type { StoreContext } from './setup';
+} from './rows.js';
+import type { StoreContext } from './setup.js';
 
 /**
  * Read the row strongly consistently and narrow it rather than cast. A

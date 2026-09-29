@@ -17,10 +17,15 @@ concurrency:
   # Superseded pushes to a branch are cancelled; runs on main always finish.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Every job bounds itself with `timeout-minutes`, so a hung step costs minutes
+# rather than GitHub's six-hour default, and every checkout drops its token,
+# since no job here pushes and `npm ci` runs in most of them.
+# test/static/workflow-hygiene.test.ts pins both, in every workflow.
 jobs:
   test:
     name: test (node ${{ matrix.node }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +34,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -54,9 +61,12 @@ jobs:
   audit:
     name: npm audit (high+)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -78,9 +88,12 @@ jobs:
   typecheck-all:
     name: 'typecheck (full program: src + test + configs)'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -97,6 +110,7 @@ jobs:
   integration:
     name: integration (DynamoDB Local)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       dynamodb-local:
         image: amazon/dynamodb-local:3.3.1
@@ -107,6 +121,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -157,6 +173,7 @@ jobs:
   conformance-matrix:
     name: conformance (langgraph ${{ matrix.langgraph }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -172,6 +189,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -213,10 +232,12 @@ jobs:
   hygiene:
     name: repository hygiene (knip, depcheck, jscpd, actionlint, changelog)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -270,9 +291,12 @@ jobs:
   peer-floors:
     name: peer dependency floors
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -309,9 +333,12 @@ jobs:
   docs:
     name: API reference is regenerated
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -336,14 +363,19 @@ jobs:
   package-smoke:
     name: package smoke (npm pack + install + import)
     runs-on: ubuntu-latest
-    # test:surface below already bounds itself (scripts/run-with-timeout.mjs);
-    # this bounds the whole job against everything else that could stall —
-    # npm ci, the build, pack:check — so a hang here costs minutes, not the
-    # unbounded default GitHub gives a job with no timeout-minutes.
-    timeout-minutes: 15
+    # The steps below bound themselves: test:surface through
+    # scripts/run-with-timeout.mjs, each package-smoke test at 10 minutes and
+    # the consumer-types test at 15, all of them installing from the network.
+    # This bounds the whole job against everything else that could stall —
+    # npm ci, the build, pack:check — and sits above a single test's own bound,
+    # so a test that hangs on a slow registry fails with its own timeout and
+    # diagnostics instead of the job being cut off around it.
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -1,11 +1,7 @@
-import {
-  DELTA_CHANNEL_HISTORY_KEYS,
-  SAVER_KEYS,
-  SAVER_LIST_KEYS,
-} from '../../../../src/checkpointer/internal/setup';
+import { SAVER_KEYS } from '../../../../src/checkpointer/internal/setup';
 
-describe('the checkpointer option-key lists (compiler-verified against the types)', () => {
-  it('lists exactly what the checkpointer reads from each options bag', () => {
+describe('the checkpointer option-key list (compiler-verified against the type)', () => {
+  it('lists exactly what the saver reads from its constructor options', () => {
     expect(SAVER_KEYS).toEqual([
       'tableName',
       'client',
@@ -21,7 +17,5 @@ describe('the checkpointer option-key lists (compiler-verified against the types
       's3',
       'serde',
     ]);
-    expect(SAVER_LIST_KEYS).toEqual(['limit', 'before', 'filter']);
-    expect(DELTA_CHANNEL_HISTORY_KEYS).toEqual(['config', 'channels']);
   });
 });

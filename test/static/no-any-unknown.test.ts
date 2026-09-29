@@ -53,6 +53,39 @@ describe('findForbiddenTypes in a parser module', () => {
   });
 });
 
+/**
+ * A type guard's parameter is the other place a value is honestly not yet known
+ * to be anything: the guard exists to find out. Typing it anything narrower
+ * pushes a cast onto every caller, which is how the exported error guard came
+ * to fail inside the very `catch` it is documented for.
+ */
+describe('findForbiddenTypes for a type guard', () => {
+  it('allows unknown as the type of a plain parameter of a type-predicate function, anywhere', () => {
+    expect(
+      findForbiddenTypes('export function isX(value: unknown): value is X { return true; }'),
+    ).toEqual([]);
+    expect(findForbiddenTypes('function assertX(value: unknown): asserts value is X {}')).toEqual(
+      [],
+    );
+  });
+
+  it('still flags unknown in a guard written any other way', () => {
+    expect(findForbiddenTypes('function isX(value: unknown): boolean { return true; }')).toEqual([
+      1,
+    ]);
+    expect(
+      findForbiddenTypes('function isX(...values: unknown[]): values is X[] { return true; }'),
+    ).toEqual([1]);
+    expect(
+      findForbiddenTypes('function isX(value: unknown = 1): value is X { return true; }'),
+    ).toEqual([1]);
+    expect(findForbiddenTypes('const isX = (value: unknown): value is X => true;')).toEqual([1]);
+    expect(
+      findForbiddenTypes('function isX(value: { a: unknown }): value is X { return true; }'),
+    ).toEqual([1]);
+  });
+});
+
 describe('the actual source tree', () => {
   it('has no any, and no unknown outside a parameter of a parse* function in a parser module', () => {
     const offenders = listSourceFiles().flatMap((path) => {
@@ -67,8 +100,12 @@ describe('the actual source tree', () => {
 
   it('lists parser modules that exist, and eslint.config.ts allows exactly those', () => {
     const config = readFileSync(resolve(SRC_ROOT, '..', 'eslint.config.ts'), 'utf8');
-    /** A directory is required, which leaves out the entry-point block's `'src/index.ts'`. */
-    const listed = [...config.matchAll(/'src\/([^']+\/[^']+)'/g)].map((match) => match[1]).sort();
+    /**
+     * A directory is required, which leaves out the entry-point block's
+     * `'src/index.ts'`, and a glob names no module, which leaves out the
+     * `'src/**\/*.ts'` of the block that holds all of `src` to the unsafe rules.
+     */
+    const listed = [...config.matchAll(/'src\/([^'*]+\/[^'*]+)'/g)].map((match) => match[1]).sort();
     expect(listed).toEqual([...PARSER_MODULES].sort());
     for (const module of PARSER_MODULES) expect(existsSync(resolve(SRC_ROOT, module))).toBe(true);
   });

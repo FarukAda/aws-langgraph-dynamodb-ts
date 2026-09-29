@@ -182,7 +182,7 @@ is correct: a live row still names the object.
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:442](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L442)
+Defined in: [store/store.ts:445](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L445)
 
 Release owned resources.
 
@@ -206,7 +206,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:477](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L477)
+Defined in: [store/store.ts:480](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L480)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -240,10 +240,10 @@ per request. When several adapters or processes provision the same
 bucket, call them one at a time and run each again after a few minutes
 once every one of them has run.
 
-Lowering the `ttl` and calling this again shortens the rule for every
-object under the prefix, including those that rows written under the old
-value still name, so do that only once those rows have expired; raising
-the `ttl` is safe.
+Lowering the `ttl` is safe for new rows at once; the rule is not. Lower
+`ttl` now, and call this again only once the old `ttl` has elapsed since,
+because until then rows written under the old value still name objects
+the shorter rule would expire. Raising the `ttl` is safe at once.
 
 ***
 
@@ -304,7 +304,7 @@ signal to fire.
 
 > **listNamespaces**(`options?`): `Promise`\<`string`[][]\>
 
-Defined in: [store/store.ts:322](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L322)
+Defined in: [store/store.ts:323](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L323)
 
 List the distinct namespaces, sorted, optionally filtered and truncated.
 
@@ -316,11 +316,12 @@ to 100, where `0` returns an empty listing without reading the table.
 
 Returns: at most `limit` namespaces from `offset`.
 
-Throws: `VALIDATION` naming `options`, `options.<key>`, `prefix`,
-`prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-`offset`; `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
+Throws: `VALIDATION` naming `options`, `prefix`, `prefix element`,
+`suffix`, `suffix element`, `maxDepth`, `limit` or `offset`;
+`RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
 `FORMAT_UNSUPPORTED` for an item written by a newer version; a classified
-AWS failure.
+AWS failure. An option key this version does not read is ignored rather
+than refused, since the options are LangGraph's (decision record 28).
 
 #### Parameters
 
@@ -397,7 +398,7 @@ classified AWS failure; `RETRY_EXHAUSTED`.
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:399](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L399)
+Defined in: [store/store.ts:402](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L402)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
@@ -439,7 +440,7 @@ since a snapshot that already found it with nothing to embed.
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:361](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L361)
+Defined in: [store/store.ts:364](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L364)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal.
@@ -456,13 +457,15 @@ Returns: at most `limit` items from `offset`, each carrying a `score` when
 a query and an index are configured.
 
 Throws: `VALIDATION` naming `namespacePrefix`, `namespacePrefix element`,
-`filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
-`signal`, or
-`options.<key>` for a key this package does not read; `ABORTED`;
+`options` for options that are not an object, `filter`, `query`, `offset`,
+`limit`, `maxSearchCandidates`, `index.dims` or `signal`; `ABORTED`;
 `RESULT_TRUNCATED` when the walk reaches `maxScanItems` or `maxIterations`;
 `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
 version — a search reads rows it did not name, so one such row anywhere in
 the prefix it walks reports rather than being passed over; a classified AWS failure.
+An option key this version does not read is ignored rather than refused:
+the options are LangGraph's, and a key a later LangGraph adds must not turn
+a search into a refusal (decision record 28).
 
 Guarantees: a plain search stops reading once `offset + limit` matches are
 in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -492,7 +495,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:425](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L425)
+Defined in: [store/store.ts:428](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L428)
 
 LangGraph's lifecycle hook.
 

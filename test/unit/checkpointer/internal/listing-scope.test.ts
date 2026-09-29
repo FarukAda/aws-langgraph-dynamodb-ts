@@ -167,15 +167,23 @@ describe('parseListScope', () => {
     );
   });
 
-  it('refuses a key this package does not read, naming it under options', () => {
+  /**
+   * LangGraph defines these options and hands them straight through
+   * (`getStateHistory` passes its own to `list`), so a key a later LangGraph
+   * adds must not turn the call into a refusal (decision record 28).
+   */
+  it('ignores a key LangGraph may add, and still reads the ones it knows', () => {
+    const scope = parseListScope({ configurable: { thread_id: 't' } }, {
+      limit: 1,
+      bogus: true,
+    } as never);
+    expect(scope.limit).toBe(1);
+  });
+
+  it('still refuses a malformed key it reads, beside one it does not', () => {
     expect(() =>
-      parseListScope({ configurable: { thread_id: 't' } }, { limit: 1, bogus: true } as never),
-    ).toThrow(
-      expect.objectContaining({
-        code: ErrorCode.VALIDATION,
-        context: { field: 'options.bogus' },
-      }),
-    );
+      parseListScope({ configurable: { thread_id: 't' } }, { limit: -1, bogus: true } as never),
+    ).toThrow(expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'limit' } }));
   });
 
   it('rejects a non-object config, naming it', () => {

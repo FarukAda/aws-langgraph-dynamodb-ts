@@ -11,15 +11,15 @@
 import { BaseListChatMessageHistory } from '@langchain/core/chat_history';
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { guardPublic } from '../shared/errors/boundary';
-import { assertMembers } from '../shared/validation/collaborators';
-import { allKeysOf, assertShape } from '../shared/validation/option-shape';
+import { guardPublic } from '../shared/errors/boundary.js';
+import { assertMembers } from '../shared/validation/collaborators.js';
+import { allKeysOf, assertShape } from '../shared/validation/option-shape.js';
 import {
   parseMessageWindow,
   parseSessionId,
   type ParsedWindow,
   type SessionId,
-} from './internal/parse';
+} from './internal/parse.js';
 
 /** The read window an adapter applies to every `getMessages`. */
 export type AdapterWindow = { limit?: number };
@@ -133,7 +133,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * Guarantees: the window bounds what is *read*, never what is written — the
    * session keeps every message appended to it.
    */
-  addMessages(messages: BaseMessage[]): Promise<void> {
+  override addMessages(messages: BaseMessage[]): Promise<void> {
     return guardPublic('session.addMessages', () =>
       this.backend.addMessages(this.sessionId, messages),
     );
@@ -153,7 +153,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * `BaseListChatMessageHistory` declares `clear()`, and a chain that calls it
    * is asking for exactly that.
    */
-  clear(): Promise<void> {
+  override clear(): Promise<void> {
     return guardPublic('session.clear', () => this.backend.clear(this.sessionId));
   }
 }

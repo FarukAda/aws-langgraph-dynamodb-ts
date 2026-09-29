@@ -10,25 +10,25 @@
 
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { type PayloadDescriptor, collectS3Keys, type DescriptorRef } from '../codec/codec';
-import { type S3Offloader, cleanUpS3Orphans } from '../codec/s3/offloader';
-import { mapWithConcurrency } from '../concurrency';
-import { batchWriteAllIncompleteError } from '../errors/errors';
-import type { Logger } from '../logging/logger';
-import { truncateForLog } from '../logging/truncate';
-import { isAbortError } from './abort';
-import { BATCH_WRITE_MAX } from './batch-write';
-import type { DynamoDBDocumentLike, AttributeMap } from './client';
+import { type PayloadDescriptor, collectS3Keys, type DescriptorRef } from '../codec/codec.js';
+import { type S3Offloader, cleanUpS3Orphans } from '../codec/s3/offloader.js';
+import { mapWithConcurrency } from '../concurrency.js';
+import { batchWriteAllIncompleteError } from '../errors/errors.js';
+import type { Logger } from '../logging/logger.js';
+import { truncateForLog } from '../logging/truncate.js';
+import { isAbortError } from './abort.js';
+import { BATCH_WRITE_MAX } from './batch-write.js';
+import type { DynamoDBDocumentLike, AttributeMap } from './client.js';
 import {
   type RevisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
   isConditionalCheckFailed,
   rejectedRow,
-} from './idempotent-write';
-import { paginateQuery } from './paginate';
-import { withDynamoDBRetry, type RetryOptions } from './retry';
-import { rowKeyOf } from './table-schema';
+} from './idempotent-write.js';
+import { paginateQuery } from './paginate.js';
+import { withDynamoDBRetry, type RetryOptions } from './retry.js';
+import { rowKeyOf } from './table-schema.js';
 
 /**
  * Conditional row deletes a partition-wide delete keeps in flight. Pinning a
@@ -154,7 +154,7 @@ function pinFor(
   named: readonly NamedDescriptor[],
 ): RevisionGuard | undefined {
   if (idAttribute !== undefined) {
-    const observed = row[idAttribute];
+    const observed = row[idAttribute] as string | undefined;
     if (typeof observed === 'string') return writeIdGuard(idAttribute, observed);
   }
   for (const entry of named) {

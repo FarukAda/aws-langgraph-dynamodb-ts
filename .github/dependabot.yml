@@ -12,6 +12,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    # A release gets a week before an update proposes it, so one pulled or
+    # compromised within days of publication never reaches a pull request.
+    # Security updates are not delayed: cooldown applies to version updates only.
+    cooldown:
+      default-days: 7
     ignore:
       # Dev-only (examples/live-agent.mjs). langchain 1.5.12 and later raise
       # their @langchain/core peer above this package's declared floor, so the
@@ -36,6 +41,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # The same week's grace as the npm updates above.
+    cooldown:
+      default-days: 7
     groups:
       codeql-action:
         patterns:

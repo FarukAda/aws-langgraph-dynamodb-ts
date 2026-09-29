@@ -17,34 +17,39 @@
 import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { nowSeconds } from '../../shared/clock';
-import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
-import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client';
+import { nowSeconds } from '../../shared/clock.js';
+import { conditionFailedAt } from '../../shared/dynamodb/cancellation.js';
+import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client.js';
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
-} from '../../shared/dynamodb/idempotent-write';
+} from '../../shared/dynamodb/idempotent-write.js';
 import {
   backfilledAt,
   DEFAULT_INDEX_SHARDS,
   indexKeys,
   type IndexTarget,
-} from '../../shared/dynamodb/recency-index';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+} from '../../shared/dynamodb/recency-index.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
 import {
   assertReadableRow,
   isExpiredRow,
   PARTITION_KEY_ATTRIBUTE,
   ROW_FORMAT_VERSION,
-} from '../../shared/dynamodb/table-schema';
-import { classifyAwsError } from '../../shared/errors/classify';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { conflictError } from '../../shared/errors/errors';
-import type { SessionMetadata } from '../types';
-import { countLiveMessages } from './message-read';
-import type { SessionId } from './parse';
-import { historyPartitionPrefix, SESSION_SORT_KEY, sessionPartition, sessionRowKey } from './rows';
-import type { HistoryContext } from './setup';
+} from '../../shared/dynamodb/table-schema.js';
+import { classifyAwsError } from '../../shared/errors/classify.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { conflictError } from '../../shared/errors/errors.js';
+import type { SessionMetadata } from '../types.js';
+import { countLiveMessages } from './message-read.js';
+import type { SessionId } from './parse.js';
+import {
+  historyPartitionPrefix,
+  SESSION_SORT_KEY,
+  sessionPartition,
+  sessionRowKey,
+} from './rows.js';
+import type { HistoryContext } from './setup.js';
 
 /**
  * True when the transaction's first item — the SESSION row update or delete,
@@ -370,11 +375,11 @@ function isConditionRejected(error: Error): boolean {
  * row itself could not be deleted because a concurrent append has since added
  * messages to it.
  *
- * Without this, that narrow window reopens exactly the leak C4 closes: the
- * title is derived from the first human message of an append the caller was
- * told had failed, and `if_not_exists` means nothing ever overwrites it — so
- * a row that now belongs to a different caller keeps up to 80 characters of
- * rolled-back message content.
+ * Without this, that narrow window reopens the leak that deleting the row
+ * closes: the title is derived from the first human message of an append the
+ * caller was told had failed, and `if_not_exists` means nothing ever
+ * overwrites it — so a row that now belongs to a different caller keeps up to
+ * 80 characters of rolled-back message content.
  *
  * Both guards are load-bearing. `createdAt = :now` establishes that this call
  * created the row, and `title = :title` that the title on it is still the one
@@ -502,7 +507,10 @@ function isTextBlock(block: object): block is TextBlock {
  * declares it as `string`, but a multimodal message serializes its
  * `MessageContentComplex[]` blocks verbatim, so an array must be handled too.
  */
-type StoredContent = string | readonly (object | string | number | boolean | null)[];
+type StoredContent = string | readonly StoredBlock[];
+
+/** One entry of a content-block array: a block, or whatever else the array holds. */
+type StoredBlock = object | string | number | boolean | null;
 
 /**
  * The human-readable text of a message's `content`: the string itself, or the
@@ -513,7 +521,7 @@ function textOf(content: StoredContent | undefined): string | undefined {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return undefined;
   const block = content.find(
-    (entry): entry is TextBlock =>
+    (entry: StoredBlock): entry is TextBlock =>
       typeof entry === 'object' && entry !== null && isTextBlock(entry),
   );
   return block?.text;
@@ -591,7 +599,7 @@ async function observeCount(
     retryFor(context, signal),
   );
   if (!result.Item) return { exists: false };
-  const count = result.Item.messageCount;
+  const count = (result.Item as { messageCount?: number }).messageCount;
   return typeof count === 'number' ? { exists: true, count } : { exists: true };
 }
 

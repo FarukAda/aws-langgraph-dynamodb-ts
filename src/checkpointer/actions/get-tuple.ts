@@ -11,9 +11,9 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
-import { parseConfig, ROOT_NAMESPACE, type ThreadAddress } from '../internal/parse';
-import { assembleTuple, fetchTargetMeta } from '../internal/read';
-import type { CheckpointerContext } from '../internal/setup';
+import { parseConfig, ROOT_NAMESPACE, type ThreadAddress } from '../internal/parse.js';
+import { assembleTuple, fetchTargetMeta } from '../internal/read.js';
+import type { CheckpointerContext } from '../internal/setup.js';
 
 /**
  * One checkpoint with its metadata and pending writes.

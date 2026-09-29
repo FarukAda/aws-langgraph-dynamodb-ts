@@ -8,9 +8,9 @@
  * cancellation from a failure, so no call site inspects a reason's shape.
  */
 
-import { DynamoDBLangGraphError, hasErrorCode, toError } from '../errors/base-error';
-import { ErrorCode } from '../errors/error-code';
-import { abortError } from '../errors/errors';
+import { DynamoDBLangGraphError, hasErrorCode, toError } from '../errors/base-error.js';
+import { ErrorCode } from '../errors/error-code.js';
+import { abortError } from '../errors/errors.js';
 
 /**
  * Whether `error` is a cancellation rather than a failure.

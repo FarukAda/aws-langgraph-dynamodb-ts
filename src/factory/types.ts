@@ -9,18 +9,18 @@
 
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
-import type { DynamoDBSaver } from '../checkpointer/saver';
-import type { DynamoDBSaverOptions } from '../checkpointer/types';
-import type { DynamoDBChatMessageHistory } from '../history/chat-message-history';
-import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
-import type { CompressionConfig } from '../shared/codec/compression';
-import type { S3OffloadConfig } from '../shared/codec/s3/config';
-import type { DynamoDBDocumentLike } from '../shared/dynamodb/client';
-import type { RetryPolicy } from '../shared/dynamodb/retry';
-import type { Logger } from '../shared/logging/logger';
-import type { TtlOption } from '../shared/validation/ttl';
-import type { DynamoDBStore } from '../store/store';
-import type { DynamoDBStoreOptions } from '../store/types';
+import type { DynamoDBSaver } from '../checkpointer/saver.js';
+import type { DynamoDBSaverOptions } from '../checkpointer/types.js';
+import type { DynamoDBChatMessageHistory } from '../history/chat-message-history.js';
+import type { DynamoDBChatMessageHistoryOptions } from '../history/types.js';
+import type { CompressionConfig } from '../shared/codec/compression.js';
+import type { S3OffloadConfig } from '../shared/codec/s3/config.js';
+import type { DynamoDBDocumentLike } from '../shared/dynamodb/client.js';
+import type { RetryPolicy } from '../shared/dynamodb/retry.js';
+import type { Logger } from '../shared/logging/logger.js';
+import type { TtlOption } from '../shared/validation/ttl.js';
+import type { DynamoDBStore } from '../store/store.js';
+import type { DynamoDBStoreOptions } from '../store/types.js';
 
 /**
  * Defaults applied to every adapter the factory builds: the client (or how to

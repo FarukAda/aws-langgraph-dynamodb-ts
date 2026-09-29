@@ -8,8 +8,8 @@
  * quotes its cause share these rules, so a new credential shape is one edit.
  */
 
-import { toError } from '../errors/base-error';
-import { truncateRelayedText } from './truncate';
+import { toError } from '../errors/base-error.js';
+import { truncateRelayedText } from './truncate.js';
 
 /** Marker substituted for anything recognised as secret. */
 export const REDACTED = '[REDACTED]';
@@ -85,11 +85,22 @@ export function normaliseKey(key: string): string {
  * 3. the rest of the line, so a multi-word secret is redacted whole instead of
  *    up to its first space. Trying the two precise shapes first is what keeps
  *    this fallback from over-redacting sibling JSON fields.
+ *
+ * The JWT pattern (third) must scan in linear time, because these patterns
+ * run on text a caller controls — anything passed to `redactSecrets` or
+ * `redactLogger`, and an error's whole message before `redactedMessage` cuts
+ * it. A token's header segment is therefore not allowed to run across a `-`
+ * that opens another `eyJ`: written as `eyJ[A-Za-z0-9_-]+`, every `-eyJ` in a
+ * long run of token characters started a fresh scan to the end of the run, so
+ * 400 KB of `-eyJ` held the event loop for about 13 seconds. The only output
+ * this changes is a token whose header segment itself contains `-eyJ`: it is
+ * redacted from that point on, which can leave part of the header — never the
+ * payload or the signature — in the clear.
  */
 export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
-  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+  /\beyJ(?:[A-Za-z0-9_]|-(?!eyJ))+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
   /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=\s*[,}\]]|\s*$)|[^\r\n]+)/gi,
 ];
 

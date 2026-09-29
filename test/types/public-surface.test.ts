@@ -12,6 +12,7 @@ import type {
 import { expectTypeOf } from 'expect-type';
 
 import * as api from '../../src/index';
+import type * as Api from '../../src/index';
 import type {
   AdapterSection,
   AdapterWindow,
@@ -48,10 +49,8 @@ import type {
   RetryOptions,
   RetryPolicy,
   S3ClientConfigLike,
-  S3ClientLike,
   S3ClientOption,
   S3ClientOptions,
-  S3CommandLike,
   S3OffloadConfig,
   S3RegionLike,
   SearchOptions,
@@ -152,8 +151,6 @@ describe('public type exports', () => {
     expectTypeOf<RetryOptions>().toHaveProperty('maxAttempts');
     expectTypeOf<RetryPolicy>().toHaveProperty('maxAttempts');
     expectTypeOf<S3OffloadConfig['clientConfig']>().toEqualTypeOf<S3ClientConfigLike | undefined>();
-    expectTypeOf<S3ClientLike>().toHaveProperty('destroy');
-    expectTypeOf<S3CommandLike>().toHaveProperty('input');
     expectTypeOf<S3ClientOptions['region']>().toEqualTypeOf<S3RegionLike | undefined>();
     expectTypeOf<S3ClientOption>().not.toBeNever();
     expectTypeOf<SearchOptions>().toEqualTypeOf<
@@ -171,6 +168,23 @@ describe('public type exports', () => {
     expectTypeOf<VectorReconcileResult>().toEqualTypeOf<{ upserted: number; pruned: number }>();
     expectTypeOf<VectorRef>().toEqualTypeOf<{ namespace: string[]; key: string }>();
     expectTypeOf<VectorScoreDirection>().toEqualTypeOf<'relevance' | 'distance'>();
+  });
+});
+
+/**
+ * Removed from the public surface before 1.0: both typed only an internal test
+ * hook, so no public option or method took either. Each alias must fail to
+ * compile; one that compiles means the name is back on the surface, which is a
+ * semver decision to make in the import list above instead.
+ */
+// @ts-expect-error -- S3ClientLike is no longer exported.
+type RetiredS3ClientLike = Api.S3ClientLike;
+// @ts-expect-error -- S3CommandLike is no longer exported.
+type RetiredS3CommandLike = Api.S3CommandLike;
+
+describe('retired type exports', () => {
+  it('are no longer on the public surface (their aliases above must not compile)', () => {
+    expectTypeOf<[RetiredS3ClientLike, RetiredS3CommandLike]>().not.toBeNever();
   });
 });
 

@@ -10,17 +10,17 @@
 
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
-import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { validationError } from '../../shared/errors/errors';
-import { createUlidFactory } from '../../shared/ulid';
-import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
+import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter.js';
+import { JSON_SERDE } from '../../shared/codec/json-serde.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { createUlidFactory } from '../../shared/ulid.js';
+import { allKeysOf, assertShape } from '../../shared/validation/option-shape.js';
 import type {
   CorruptMessagePolicy,
   DynamoDBChatMessageHistoryOptions,
   GetMessagesOptions,
   ListSessionsOptions,
-} from '../types';
+} from '../types.js';
 
 /**
  * Max attempts for the message-append transaction. It shares one session's

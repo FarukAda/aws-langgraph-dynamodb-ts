@@ -11,11 +11,11 @@
  * proves no live row names it — never on an outcome nothing confirmed.
  */
 
-import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { abortErrorFrom } from '../../shared/dynamodb/abort';
-import type { AttributeMap } from '../../shared/dynamodb/client';
+import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec.js';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
+import { mapWithConcurrency } from '../../shared/concurrency.js';
+import { abortErrorFrom } from '../../shared/dynamodb/abort.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
 import {
   commitRow,
   isConditionalCheckFailed,
@@ -29,13 +29,13 @@ import {
   verdictFor,
   type VerifiedWrite,
   verifyRow,
-} from '../../shared/dynamodb/idempotent-write';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
-import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { truncateForLog } from '../../shared/logging/truncate';
-import type { ThreadId } from './parse';
-import { type CheckpointWriteRow, WRITE_GROUP_ATTRIBUTE } from './rows';
-import type { CheckpointerContext } from './setup';
+} from '../../shared/dynamodb/idempotent-write.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
+import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import type { ThreadId } from './parse.js';
+import { type CheckpointWriteRow, WRITE_GROUP_ATTRIBUTE } from './rows.js';
+import type { CheckpointerContext } from './setup.js';
 
 /** One call's rows, ready to commit. */
 export interface PendingWriteBatch {

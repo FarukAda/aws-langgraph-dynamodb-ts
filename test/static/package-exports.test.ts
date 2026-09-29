@@ -3,8 +3,14 @@ import { resolve } from 'node:path';
 
 import { SRC_ROOT } from './guards/source-files';
 
+/** One condition's target: a file, or a nested map with its own `types`. */
+type ExportTarget = string | { [condition: string]: ExportTarget };
+
 interface PackageManifest {
-  exports: Record<string, string | Record<string, string>>;
+  type: string;
+  main: string;
+  types: string;
+  exports: Record<string, ExportTarget>;
   files: string[];
 }
 
@@ -13,13 +19,22 @@ const manifest = JSON.parse(
 ) as PackageManifest;
 
 describe('package exports map', () => {
-  it('keeps the root entry with types, import, require and default conditions', () => {
+  /**
+   * Each module system gets its own build and its own declarations, so an ESM
+   * application never loads the CommonJS copies of the peers beside its own
+   * (decision record 29).
+   */
+  it('sends import to the ES-module build and require to the CommonJS one', () => {
     expect(manifest.exports['.']).toEqual({
-      types: './dist/index.d.ts',
-      import: './dist/index.js',
-      require: './dist/index.js',
-      default: './dist/index.js',
+      import: { types: './dist/esm/index.d.ts', default: './dist/esm/index.js' },
+      require: { types: './dist/cjs/index.d.ts', default: './dist/cjs/index.js' },
     });
+  });
+
+  it('points the legacy main and types fields at the CommonJS build', () => {
+    expect(manifest.type).toBe('module');
+    expect(manifest.main).toBe('./dist/cjs/index.js');
+    expect(manifest.types).toBe('./dist/cjs/index.d.ts');
   });
 
   it('exports package.json for version banners and tooling, and nothing else from dist', () => {

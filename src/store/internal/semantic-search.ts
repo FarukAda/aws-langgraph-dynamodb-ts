@@ -9,9 +9,9 @@
 
 import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 
-import { validationError } from '../../shared/errors/errors';
-import type { JsonValue } from './filter';
-import type { StoreContext } from './setup';
+import { validationError } from '../../shared/errors/errors.js';
+import type { JsonValue } from './filter.js';
+import type { StoreContext } from './setup.js';
 
 /** Texts per `embedDocuments` call; keeps provider request sizes bounded. */
 const EMBED_BATCH_SIZE = 100;

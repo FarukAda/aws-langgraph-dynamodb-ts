@@ -11,19 +11,19 @@
  * own loop, do not.
  */
 
-import { nowMs } from '../clock';
-import { failureLabel, toError } from '../errors/base-error';
+import { nowMs } from '../clock.js';
+import { failureLabel, toError } from '../errors/base-error.js';
 import {
   DEFAULT_RETRYABLE_ERRORS,
   mayStillBeInFlight,
   TRANSIENT_HTTP_STATUSES,
-} from '../errors/classify';
-import { retryExhaustedError } from '../errors/errors';
-import type { Logger } from '../logging/logger';
-import { redactedMessage } from '../logging/secret-patterns';
-import { truncateForLog } from '../logging/truncate';
-import { abortErrorFrom } from './abort';
-import { transientCancellation } from './cancellation';
+} from '../errors/classify.js';
+import { retryExhaustedError } from '../errors/errors.js';
+import type { Logger } from '../logging/logger.js';
+import { redactedMessage } from '../logging/secret-patterns.js';
+import { truncateForLog } from '../logging/truncate.js';
+import { abortErrorFrom } from './abort.js';
+import { transientCancellation } from './cancellation.js';
 
 /** Starting delay for UnprocessedItems / UnprocessedKeys backoff loops. */
 export const INITIAL_BACKOFF_DELAY_MS = 100;

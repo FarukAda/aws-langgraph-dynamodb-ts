@@ -8,9 +8,9 @@
  * never learns the row kinds, their sort keys or how a refusal is counted.
  */
 
-import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { parseThreadId } from '../internal/parse';
+import { deletePartitionRows } from '../../shared/dynamodb/partition-delete.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { parseThreadId } from '../internal/parse.js';
 import {
   checkpointRowDescriptors,
   checkpointRowKind,
@@ -19,8 +19,8 @@ import {
   partitionKey,
   partitionQuery,
   WRITE_GROUP_ATTRIBUTE,
-} from '../internal/rows';
-import type { CheckpointerContext } from '../internal/setup';
+} from '../internal/rows.js';
+import type { CheckpointerContext } from '../internal/setup.js';
 
 /**
  * Delete exactly the checkpoint, payload and write rows of one thread that the

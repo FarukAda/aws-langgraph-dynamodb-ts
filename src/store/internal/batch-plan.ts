@@ -11,8 +11,8 @@
  * single one.
  */
 
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import type { ParsedOperation, StoreAddress } from './parse';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency.js';
+import type { ParsedOperation, StoreAddress } from './parse.js';
 
 /** What one operation touches, which is what decides whether it may run beside another. */
 type Touch =

@@ -3,7 +3,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 
 import * as ts from 'typescript';
 
-import { listSourceFiles, SRC_ROOT } from './source-files';
+import { listSourceFiles, SRC_ROOT, withoutEmittedExtension } from './source-files';
 
 /**
  * The layers of `src/`, innermost first. A module may import from its own layer
@@ -92,7 +92,7 @@ export function featureOf(file: string): string | undefined {
 
 /** `specifier`, written in `file`, as a module path relative to `src/`. */
 function resolveInSrc(file: string, specifier: string): string {
-  const base = resolve(SRC_ROOT, dirname(file), specifier);
+  const base = resolve(SRC_ROOT, dirname(file), withoutEmittedExtension(specifier));
   const target =
     [`${base}.ts`, resolve(base, 'index.ts')].find((candidate) => existsSync(candidate)) ??
     `${base}.ts`;

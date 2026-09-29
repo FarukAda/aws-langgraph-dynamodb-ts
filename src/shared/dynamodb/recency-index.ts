@@ -12,13 +12,13 @@ import { createHash } from 'node:crypto';
 
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { mapWithConcurrency } from '../concurrency';
-import { validationError, resultTruncatedError } from '../errors/errors';
-import { type PageLimit, parseLimit } from '../validation/primitives';
-import type { AttributeMap, DynamoDBDocumentLike } from './client';
-import { MAX_LOOP_ITERATIONS } from './paginate';
-import { type RetryOptions, withDynamoDBRetry } from './retry';
-import { compareSortKeys, MAX_SORT_KEY_BYTES } from './table-schema';
+import { mapWithConcurrency } from '../concurrency.js';
+import { validationError, resultTruncatedError } from '../errors/errors.js';
+import { type PageLimit, parseLimit } from '../validation/primitives.js';
+import type { AttributeMap, DynamoDBDocumentLike } from './client.js';
+import { MAX_LOOP_ITERATIONS } from './paginate.js';
+import { type RetryOptions, withDynamoDBRetry } from './retry.js';
+import { compareSortKeys, MAX_SORT_KEY_BYTES } from './table-schema.js';
 
 /** One page of a recency listing, and where the next one resumes. */
 export interface IndexPage {

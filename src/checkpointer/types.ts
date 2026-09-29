@@ -12,7 +12,7 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CodecOptions } from '../shared/options.js';
 
 /** Options for {@link DynamoDBSaver}. */
 export type DynamoDBSaverOptions = BaseAdapterOptions &

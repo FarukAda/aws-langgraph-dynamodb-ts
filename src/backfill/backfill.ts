@@ -8,30 +8,30 @@
  * scan read it is left alone.
  */
 
-import { checkpointIndexTarget } from '../checkpointer/internal/rows';
-import { sessionIndexTarget } from '../history/internal/session';
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../shared/concurrency';
-import type { AttributeMap, DynamoDBDocumentLike } from '../shared/dynamodb/client';
-import { isConditionalCheckFailed } from '../shared/dynamodb/idempotent-write';
+import { checkpointIndexTarget } from '../checkpointer/internal/rows.js';
+import { sessionIndexTarget } from '../history/internal/session.js';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../shared/concurrency.js';
+import type { AttributeMap, DynamoDBDocumentLike } from '../shared/dynamodb/client.js';
+import { isConditionalCheckFailed } from '../shared/dynamodb/idempotent-write.js';
 import {
   DEFAULT_INDEX_SHARDS,
   type IndexKeys,
   indexKeys,
   type IndexTarget,
   MAX_INDEX_SHARDS,
-} from '../shared/dynamodb/recency-index';
-import { type RetryOptions, withDynamoDBRetry } from '../shared/dynamodb/retry';
-import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../shared/dynamodb/table-schema';
-import { guardPublic } from '../shared/errors/boundary';
-import { validationError } from '../shared/errors/errors';
+} from '../shared/dynamodb/recency-index.js';
+import { type RetryOptions, withDynamoDBRetry } from '../shared/dynamodb/retry.js';
+import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../shared/dynamodb/table-schema.js';
+import { guardPublic } from '../shared/errors/boundary.js';
+import { validationError } from '../shared/errors/errors.js';
 import {
   assertClientTranslation,
   assertMembers,
   assertSignalLike,
-} from '../shared/validation/collaborators';
-import { allKeysOf, assertShape } from '../shared/validation/option-shape';
-import { assertRetryBounds, assertTableName } from '../shared/validation/options';
-import { assertInteger, assertStringArray } from '../shared/validation/primitives';
+} from '../shared/validation/collaborators.js';
+import { allKeysOf, assertShape } from '../shared/validation/option-shape.js';
+import { assertRetryBounds, assertTableName } from '../shared/validation/options.js';
+import { assertInteger, assertStringArray } from '../shared/validation/primitives.js';
 
 /**
  * The retry policy every request of one run uses: the caller's `retry`, with

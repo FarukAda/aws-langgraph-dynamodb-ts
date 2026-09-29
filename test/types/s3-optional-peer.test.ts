@@ -1,7 +1,8 @@
 import { S3Client, type S3ClientConfig } from '@aws-sdk/client-s3';
 import { expectTypeOf } from 'expect-type';
 
-import type { S3ClientConfigLike, S3ClientLike, S3OffloadConfig } from '../../src/index';
+import type { S3ClientConfigLike, S3OffloadConfig } from '../../src/index';
+import type { S3ClientLike } from '../../src/shared/codec/s3/client-types';
 
 describe('S3 offload types stand on their own', () => {
   it('accepts every S3ClientConfig shape and an S3Client from the hook', () => {

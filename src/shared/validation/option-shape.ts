@@ -1,14 +1,16 @@
 /**
  * Hides how an option object is told apart from a misspelt one.
  *
- * An option type lists its keys once, checked by the compiler against the
- * type, and an object carrying any other key is refused naming that key. No
- * caller writes the plain-object test or the unknown-key walk itself, so the
- * message and the field a refusal names are the same for every option object
- * this package reads.
+ * An option type this package defines lists its keys once, checked by the
+ * compiler against the type, and an object carrying any other key is refused
+ * naming that key. An option object LangGraph defines is only held to being an
+ * object, since a key a later LangGraph adds must not refuse a call LangGraph
+ * makes (decision record 28). No caller writes the plain-object test or the
+ * unknown-key walk itself, so the message and the field a refusal names are the
+ * same for every option object this package reads.
  */
 
-import { validationError } from '../errors/errors';
+import { validationError } from '../errors/errors.js';
 
 /**
  * Every key of `T`, listed once.
@@ -26,7 +28,7 @@ import { validationError } from '../errors/errors';
 export function allKeysOf<T extends object>(keys: {
   [K in keyof Required<T>]: K;
 }): readonly string[] {
-  return Object.values(keys);
+  return Object.keys(keys);
 }
 
 /**

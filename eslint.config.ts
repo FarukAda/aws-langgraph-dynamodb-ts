@@ -29,10 +29,20 @@ const plugins: Record<string, ESLint.Plugin> = {
  */
 const disableTypeChecked = ts.configs.disableTypeChecked as Linter.Config;
 
+/**
+ * The one `unknown` allowed in every module: the declared type of a parameter
+ * of a function whose return type is a type predicate. A guard exists to find
+ * out what its argument is, so that argument is honestly not yet known to be
+ * anything, and typing it narrower pushes a cast onto every caller.
+ * `test/static/guards/forbidden-types.ts` applies the same exemption.
+ */
+const GUARD_PARAMETER =
+  'FunctionDeclaration[returnType.typeAnnotation.type="TSTypePredicate"] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword';
+
 const NO_UNKNOWN = {
-  selector: 'TSUnknownKeyword',
+  selector: `TSUnknownKeyword:not(${GUARD_PARAMETER})`,
   message:
-    'The `unknown` type is banned in src. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
+    'The `unknown` type is banned in src, except as the type of a parameter of a type-predicate function. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
 /**
  * The modules that turn a caller's input into a checked type. A `parse*`
@@ -50,10 +60,9 @@ const PARSER_MODULES = [
   'src/store/internal/parse.ts',
 ];
 const NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS = {
-  selector:
-    'TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword)',
+  selector: `TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword):not(${GUARD_PARAMETER})`,
   message:
-    '`unknown` is allowed only as the type of a parameter of a `parse*` function in a parser module. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
+    '`unknown` is allowed only as the type of a parameter of a `parse*` function in a parser module, or of a type-predicate function. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
 const NO_EXPORT_ALL = {
   selector: 'ExportAllDeclaration',
@@ -115,16 +124,17 @@ export default defineConfig([
       ],
       'no-instanceof/no-instanceof': 'error',
       /**
-       * Off until their hits are fixed. The first scan with
+       * Off here, and on for `src` in its own block below. The first scan with
        * `recommendedTypeChecked` on reported 872 hits across all of its rules.
        * Rule 53 requires a clean tree before a blocking check goes on, so the
        * four correctness rules that check `await` discipline
        * (`no-floating-promises`, `no-misused-promises`, `await-thenable`,
        * `require-await`) and every other type-checked rule with 20 or fewer
-       * hits were fixed and stay on. The four below each had more than 20; a
-       * scan with only them turned on, after those fixes, reports
-       * `no-unsafe-argument` 117 hits, `no-unsafe-assignment` 71,
-       * `no-unsafe-member-access` 70 and `no-unsafe-return` 44.
+       * hits were fixed and stay on. The four below each had more than 20. A
+       * scan with only them turned on found 14 hits in `src`, since fixed, and
+       * 403 in `test`: `no-unsafe-argument` 211, `no-unsafe-assignment` 76,
+       * `no-unsafe-member-access` 70 and `no-unsafe-return` 46, nearly all a
+       * Jest matcher or mock returning `any`.
        */
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
@@ -187,6 +197,20 @@ export default defineConfig([
        * handling does not assume the rejection is an `Error`.
        */
       '@typescript-eslint/prefer-promise-reject-errors': 'off',
+    },
+  },
+  {
+    /**
+     * The shipped code lets no `any` flow on unchecked: a value the SDK or
+     * `JSON.parse` types as `any` is asserted to the shape the code checks it
+     * against at run time before it is used.
+     */
+    files: ['src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
     },
   },
   {

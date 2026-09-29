@@ -7,17 +7,20 @@
  * surfaces at construction rather than on the first call.
  */
 
-import { MAX_INLINE_PAYLOAD_BYTES } from '../codec/codec';
-import type { CompressionConfig } from '../codec/compression';
-import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
-import { DEFAULT_MAX_S3_DOWNLOAD_BYTES, DEFAULT_S3_THRESHOLD_BYTES } from '../codec/s3/offloader';
-import { MAX_INDEX_SHARDS } from '../dynamodb/recency-index';
-import type { RetryPolicy } from '../dynamodb/retry';
-import { validationError } from '../errors/errors';
-import type { BaseAdapterOptions, CodecOptions } from '../options';
-import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
-import { assertInteger, assertNonEmptyString } from './primitives';
-import { resolveTtlSeconds } from './ttl';
+import { MAX_INLINE_PAYLOAD_BYTES } from '../codec/codec.js';
+import type { CompressionConfig } from '../codec/compression.js';
+import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config.js';
+import {
+  DEFAULT_MAX_S3_DOWNLOAD_BYTES,
+  DEFAULT_S3_THRESHOLD_BYTES,
+} from '../codec/s3/offloader.js';
+import { MAX_INDEX_SHARDS } from '../dynamodb/recency-index.js';
+import type { RetryPolicy } from '../dynamodb/retry.js';
+import { validationError } from '../errors/errors.js';
+import type { BaseAdapterOptions, CodecOptions } from '../options.js';
+import { allKeysOf, assertObjectShape, assertShape } from './option-shape.js';
+import { assertInteger, assertNonEmptyString } from './primitives.js';
+import { resolveTtlSeconds } from './ttl.js';
 
 /** DynamoDB's table-name rule: 3–255 characters from `[A-Za-z0-9_.-]`. */
 const TABLE_NAME_PATTERN = /^[A-Za-z0-9_.-]{3,255}$/;

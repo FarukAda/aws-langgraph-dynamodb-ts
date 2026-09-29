@@ -148,6 +148,48 @@ describe('planReferencesIn', () => {
   });
 });
 
+describe('planReferencesIn — bare finding ids', () => {
+  it('flags a test title that opens with a finding id', () => {
+    expect(
+      planReferencesIn("  it('C1: deleteThread leaves …', async () => {", 'x.ts'),
+    ).toHaveLength(1);
+    expect(planReferencesIn('  describe("M9: listing", () => {', 'x.ts')).toHaveLength(1);
+  });
+
+  it('flags a finding id cited in comment prose', () => {
+    expect(
+      planReferencesIn(' * reopens exactly the leak C4 closes: the title', 'x.ts'),
+    ).toHaveLength(1);
+    expect(planReferencesIn(' * C1/C2: every adapter used to write', 'x.ts')).toHaveLength(1);
+    expect(planReferencesIn('    // (the I9 collision this prefix avoids)', 'x.ts')).toHaveLength(
+      1,
+    );
+  });
+
+  it('leaves service and standard names alone', () => {
+    expect(planReferencesIn(' * an S3 object, an EC2 host, UTF-16, SHA-256', 'x.ts')).toEqual([]);
+    expect(planReferencesIn("  it('S3: uploads once', () => {", 'x.ts')).toEqual([]);
+  });
+
+  /**
+   * The C0 and C1 control sets are Unicode's names, and `L2` after FAISS is
+   * the Euclidean distance: each reads like a short finding id.
+   */
+  it('leaves the control-set names and the L2 distance alone', () => {
+    const source = [
+      ' * a C0 control character, DEL, or a C1 control character',
+      ' * and C1 (`U+0080`–`U+009F`); every C1 code unit',
+      ' * C0 controls, DEL, C1 controls',
+      ' * (S3 Vectors, FAISS L2, pgvector)',
+    ].join('\n');
+    expect(planReferencesIn(source, 'x.ts')).toEqual([]);
+  });
+
+  it('reads a bare id only in a comment, never in code', () => {
+    expect(planReferencesIn("const label = 'M8 fixture';", 'x.ts')).toEqual([]);
+  });
+});
+
 describe('citations of planning files that are not in the repository', () => {
   it('flags a section sign followed by a number', () => {
     expect(planReferencesIn(' * (design §11.6)', 'a.ts').map((hit) => hit.text)).toEqual(['§11']);
@@ -184,7 +226,19 @@ describe('planReferences', () => {
     );
     expect(files).not.toContain('test/static/guards/plan-references.ts');
     expect(files).not.toContain('test/static/plan-references.test.ts');
-    expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
+  });
+
+  it('reads the hand-edited docs under docs/, and not the generated API reference', () => {
+    const files = planReferenceScanFiles();
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'docs/guide.md',
+        'docs/decisions/README.md',
+        'docs/evidence/README.md',
+      ]),
+    );
+    expect(files.some((file) => file.startsWith('docs/api/'))).toBe(false);
+    expect(files.some((file) => file.startsWith('docs/superpowers/'))).toBe(false);
   });
 });
 

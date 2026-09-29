@@ -170,7 +170,7 @@ describe('listSessions', () => {
       Items: [
         { PK: 'thread', SK: 'META##c' },
         // A bare 'SESSION' SK with no sessionId — exactly what a store item at
-        // store.put([id], 'SESSION', ...) looks like on a shared table (the I9
+        // store.put([id], 'SESSION', ...) looks like on a shared table (the
         // collision this adapter's HISTORY# prefix now avoids at the PK/SK
         // level; this asserts the read-side filter also treats it as foreign).
         { PK: 'ns', SK: 'SESSION', namespace: ['ns'] },

@@ -12,8 +12,8 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { codecDepsOf, encodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
-import type { AttributeMap } from '../../shared/dynamodb/client';
+import { codecDepsOf, encodePayload, type PayloadDescriptor } from '../../shared/codec/codec.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
 import {
   ADAPTER_TAGS,
   KEY_SEPARATOR,
@@ -21,9 +21,9 @@ import {
   ROW_FORMAT_VERSION,
   type RowKey,
   SORT_KEY_ATTRIBUTE,
-} from '../../shared/dynamodb/table-schema';
-import type { SessionId } from './parse';
-import type { HistoryContext } from './setup';
+} from '../../shared/dynamodb/table-schema.js';
+import type { SessionId } from './parse.js';
+import type { HistoryContext } from './setup.js';
 
 /**
  * Row-kind tag distinguishing this adapter's sort keys from another

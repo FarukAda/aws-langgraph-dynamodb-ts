@@ -11,10 +11,10 @@
 
 import type { S3Client } from '@aws-sdk/client-s3';
 
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';
-import { copyForCaller } from '../../errors/base-error';
-import { validationError } from '../../errors/errors';
-import type { S3ClientConfigLike } from './client-types';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client.js';
+import { copyForCaller } from '../../errors/base-error.js';
+import { validationError } from '../../errors/errors.js';
+import type { S3ClientConfigLike } from './client-types.js';
 
 type S3Sdk = typeof import('@aws-sdk/client-s3');
 

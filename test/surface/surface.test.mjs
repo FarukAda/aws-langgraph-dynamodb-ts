@@ -41,8 +41,8 @@ const EXPECTED_UPSTREAM = 0;
 
 test('the public surface matches the committed baseline', async () => {
   assert.ok(
-    existsSync('dist/index.js'),
-    'dist/index.js is missing — run `npm run build` first; this tier fuzzes built output, not src/',
+    existsSync('dist/cjs/index.js'),
+    'dist/cjs/index.js is missing — run `npm run build` first; this tier fuzzes built output, not src/',
   );
   const lines = canonicalLines(await collectRows());
   /**

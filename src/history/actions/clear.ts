@@ -10,17 +10,17 @@
  * partition delete's.
  */
 
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write.js';
 import {
   deletePartitionRows,
   namedDescriptor,
   type NamedDescriptor,
-} from '../../shared/dynamodb/partition-delete';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { parseSessionId } from '../internal/parse';
-import { isHistorySortKey, sessionRowsQuery } from '../internal/rows';
-import type { HistoryContext } from '../internal/setup';
+} from '../../shared/dynamodb/partition-delete.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { parseSessionId } from '../internal/parse.js';
+import { isHistorySortKey, sessionRowsQuery } from '../internal/rows.js';
+import type { HistoryContext } from '../internal/setup.js';
 
 /**
  * The offloaded payload a chat-history row references, named by the attribute

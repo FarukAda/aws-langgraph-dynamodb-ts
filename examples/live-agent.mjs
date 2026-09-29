@@ -14,7 +14,7 @@ import {
 import { ChatBedrockConverse } from '@langchain/aws';
 import { createAgent } from 'langchain';
 
-import { DynamoDBSaver } from '../dist/index.js';
+import { DynamoDBSaver } from '../dist/esm/index.js';
 import { REGION } from './_harness.mjs';
 
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';

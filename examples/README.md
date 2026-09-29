@@ -13,7 +13,7 @@ npm ci
 npm run build
 ```
 
-Every example imports `../dist/index.js`, so the package must be built first.
+Every example imports `../dist/esm/index.js`, the ES-module build, so the package must be built first.
 Then, for each script:
 
 - AWS credentials, resolved through the SDK's default credential chain
@@ -51,6 +51,12 @@ Run any script with:
 
 ```bash
 AWS_REGION=<region> node examples/<script>.mjs
+```
+
+or through its npm script, which builds the package first:
+
+```bash
+AWS_REGION=<region> npm run example:checkpointer   # or example:persist, example:store, example:agent
 ```
 
 ## Cleaning up

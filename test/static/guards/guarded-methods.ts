@@ -2,6 +2,8 @@ import { posix } from 'node:path';
 
 import ts from 'typescript';
 
+import { withoutEmittedExtension } from './source-files';
+
 /**
  * One public member, or one function, whose body does not take the required
  * guard shape. `name` is `Class.member` for a class member and the function's
@@ -60,7 +62,7 @@ function declaresAsyncReturn(type: ts.TypeNode): boolean {
  */
 function resolveSpecifier(file: string, specifier: string): string | undefined {
   if (!specifier.startsWith('.')) return undefined;
-  return posix.normalize(posix.join(posix.dirname(file), specifier));
+  return posix.normalize(posix.join(posix.dirname(file), withoutEmittedExtension(specifier)));
 }
 
 /**

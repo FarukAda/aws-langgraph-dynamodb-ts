@@ -23,17 +23,17 @@ import {
   type SearchItem,
 } from '@langchain/langgraph-checkpoint';
 
-import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
-import type { CancelOptions } from '../shared/options';
-import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
-import { assertShape } from '../shared/validation/option-shape';
-import { listNamespaces } from './actions/list-namespaces';
-import { putItem } from './actions/put';
-import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index';
-import { searchItems } from './actions/search';
-import { runBatch } from './internal/batch-plan';
-import { getItem } from './internal/get-item';
+import type { AdapterShell } from '../shared/adapter.js';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary.js';
+import type { CancelOptions } from '../shared/options.js';
+import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators.js';
+import { assertObjectShape } from '../shared/validation/option-shape.js';
+import { listNamespaces } from './actions/list-namespaces.js';
+import { putItem } from './actions/put.js';
+import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index.js';
+import { searchItems } from './actions/search.js';
+import { runBatch } from './internal/batch-plan.js';
+import { getItem } from './internal/get-item.js';
 import {
   parseListNamespacesOptions,
   parseNamespacePrefix,
@@ -42,14 +42,14 @@ import {
   parsePutArguments,
   parseSearch,
   parseStoreAddress,
-} from './internal/parse';
-import { STORE_SEARCH_KEYS, type StoreContext, setUpStore } from './internal/setup';
+} from './internal/parse.js';
+import { type StoreContext, setUpStore } from './internal/setup.js';
 import type {
   DynamoDBStoreOptions,
   ListNamespacesOptions,
   SearchOptions,
   VectorReconcileResult,
-} from './types';
+} from './types.js';
 
 type SingleResult = Item | null | SearchItem[] | string[][];
 
@@ -313,11 +313,12 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: at most `limit` namespaces from `offset`.
    *
-   * Throws: `VALIDATION` naming `options`, `options.<key>`, `prefix`,
-   * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-   * `offset`; `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
+   * Throws: `VALIDATION` naming `options`, `prefix`, `prefix element`,
+   * `suffix`, `suffix element`, `maxDepth`, `limit` or `offset`;
+   * `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
    * `FORMAT_UNSUPPORTED` for an item written by a newer version; a classified
-   * AWS failure.
+   * AWS failure. An option key this version does not read is ignored rather
+   * than refused, since the options are LangGraph's (decision record 28).
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic(
@@ -346,13 +347,15 @@ export class DynamoDBStore extends BaseStore {
    * a query and an index are configured.
    *
    * Throws: `VALIDATION` naming `namespacePrefix`, `namespacePrefix element`,
-   * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
-   * `signal`, or
-   * `options.<key>` for a key this package does not read; `ABORTED`;
+   * `options` for options that are not an object, `filter`, `query`, `offset`,
+   * `limit`, `maxSearchCandidates`, `index.dims` or `signal`; `ABORTED`;
    * `RESULT_TRUNCATED` when the walk reaches `maxScanItems` or `maxIterations`;
    * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — a search reads rows it did not name, so one such row anywhere in
    * the prefix it walks reports rather than being passed over; a classified AWS failure.
+   * An option key this version does not read is ignored rather than refused:
+   * the options are LangGraph's, and a key a later LangGraph adds must not turn
+   * a search into a refusal (decision record 28).
    *
    * Guarantees: a plain search stops reading once `offset + limit` matches are
    * in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -366,7 +369,7 @@ export class DynamoDBStore extends BaseStore {
       'store.search',
       () => {
         const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
-        assertShape(options, STORE_SEARCH_KEYS, 'options');
+        assertObjectShape(options, 'options');
         assertSignalLike(options.signal);
         const { signal, ...rest } = options;
         return searchItems(this.context, parseSearch(prefix, rest), signal);
@@ -469,10 +472,10 @@ export class DynamoDBStore extends BaseStore {
    * bucket, call them one at a time and run each again after a few minutes
    * once every one of them has run.
    *
-   * Lowering the `ttl` and calling this again shortens the rule for every
-   * object under the prefix, including those that rows written under the old
-   * value still name, so do that only once those rows have expired; raising
-   * the `ttl` is safe.
+   * Lowering the `ttl` is safe for new rows at once; the rule is not. Lower
+   * `ttl` now, and call this again only once the old `ttl` has elapsed since,
+   * because until then rows written under the old value still name objects
+   * the shorter rule would expire. Raising the `ttl` is safe at once.
    */
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic(

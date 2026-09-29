@@ -12,25 +12,25 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate';
-import { isExpiredRow } from '../../shared/dynamodb/table-schema';
+import { nowSeconds } from '../../shared/clock.js';
+import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate.js';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema.js';
 import {
   metaRows,
   parseListedRow,
   passesKeyFilters,
   passesMetadataFilter,
-} from '../internal/listing';
+} from '../internal/listing.js';
 import {
   type CheckpointId,
   type CheckpointNs,
   type ListScope,
   parseListScope,
   type ThreadId,
-} from '../internal/parse';
-import { assembleTuple, fetchTargetMeta } from '../internal/read';
-import type { CheckpointMetaRow } from '../internal/rows';
-import type { CheckpointerContext } from '../internal/setup';
+} from '../internal/parse.js';
+import { assembleTuple, fetchTargetMeta } from '../internal/read.js';
+import type { CheckpointMetaRow } from '../internal/rows.js';
+import type { CheckpointerContext } from '../internal/setup.js';
 
 /**
  * The tuple for one META item that passes every filter, assembled eventually

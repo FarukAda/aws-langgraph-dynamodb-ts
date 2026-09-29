@@ -11,10 +11,10 @@
 
 import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
-import { validationError } from '../../errors/errors';
-import { truncateForLog } from '../../logging/truncate';
-import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
-import { s3ClientOptions, type S3ClientConfigLike, type S3ClientLike } from './client-types';
+import { validationError } from '../../errors/errors.js';
+import { truncateForLog } from '../../logging/truncate.js';
+import { assertNoControlChars, assertWellFormed } from '../../validation/primitives.js';
+import { s3ClientOptions, type S3ClientConfigLike, type S3ClientLike } from './client-types.js';
 
 /** Default S3 key prefix for offloaded payloads. */
 export const DEFAULT_S3_KEY_PREFIX = 'langgraph-checkpoints/';

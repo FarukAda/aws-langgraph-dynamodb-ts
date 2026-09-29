@@ -1,4 +1,4 @@
-import type { S3ClientLike } from '../../../src/index';
+import type { S3ClientLike } from '../../../src/shared/codec/s3/client-types';
 
 /** The parts of the SDK command inputs the fake reads. */
 interface CommandInput {

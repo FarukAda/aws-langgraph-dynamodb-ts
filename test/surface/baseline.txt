@@ -520,7 +520,7 @@ DynamoDBSaver.list | options={"filter":"x"} | throws VALIDATION field=filter
 DynamoDBSaver.list | options={"filter":[]} | throws VALIDATION field=filter
 DynamoDBSaver.list | options={"filter":null} | throws VALIDATION field=filter
 DynamoDBSaver.list | options={"filter":{"a":{"$gt":1}}} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"foo":1} | throws VALIDATION field=options.foo
+DynamoDBSaver.list | options={"foo":1} | RESOLVED first=undefined done
 DynamoDBSaver.list | options={"limit":"5"} | throws VALIDATION field=limit
 DynamoDBSaver.list | options={"limit":-1} | throws VALIDATION field=limit
 DynamoDBSaver.list | options={"limit":0} | RESOLVED first=undefined done
@@ -785,7 +785,7 @@ DynamoDBStore.get | served row: x-msgpack bytes, which are not JSON, serde=JSON_
 DynamoDBStore.get | served row: x-msgpack bytes, which are not JSON, serde=default serde | throws VALIDATION field=serde
 DynamoDBStore.listNamespaces | options="x" | throws VALIDATION field=options
 DynamoDBStore.listNamespaces | options=null | throws VALIDATION field=options
-DynamoDBStore.listNamespaces | options={"foo":1} | throws VALIDATION field=options.foo
+DynamoDBStore.listNamespaces | options={"foo":1} | RESOLVED []
 DynamoDBStore.listNamespaces | options={"limit":-1} | throws VALIDATION field=limit
 DynamoDBStore.listNamespaces | options={"limit":0} | RESOLVED []
 DynamoDBStore.listNamespaces | options={"maxDepth":"1"} | throws VALIDATION field=maxDepth
@@ -838,7 +838,7 @@ DynamoDBStore.search | options={"filter":[]} | throws VALIDATION field=filter
 DynamoDBStore.search | options={"filter":null} | throws VALIDATION field=filter
 DynamoDBStore.search | options={"filter":{"a":{"$foo":1}}} | RESOLVED []
 DynamoDBStore.search | options={"filter":{"a#b":1}} | RESOLVED []
-DynamoDBStore.search | options={"foo":1} | throws VALIDATION field=options.foo
+DynamoDBStore.search | options={"foo":1} | RESOLVED []
 DynamoDBStore.search | options={"limit":"5"} | throws VALIDATION field=limit
 DynamoDBStore.search | options={"limit":-1} | throws VALIDATION field=limit
 DynamoDBStore.search | options={"limit":0} | RESOLVED []

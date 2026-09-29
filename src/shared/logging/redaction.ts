@@ -7,11 +7,11 @@
  * serves `redactSecrets` for a value a caller wants to log themselves.
  */
 
-import { validationError } from '../errors/errors';
-import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
-import { assertObjectShape } from '../validation/option-shape';
-import { assertStringArray } from '../validation/primitives';
-import { absorbLoggerFailure, type LogArgument, type Logger } from './logger';
+import { validationError } from '../errors/errors.js';
+import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators.js';
+import { assertObjectShape } from '../validation/option-shape.js';
+import { assertStringArray } from '../validation/primitives.js';
+import { absorbLoggerFailure, type LogArgument, type Logger } from './logger.js';
 import {
   binaryLabel,
   DEFAULT_SECRET_KEY_PATTERNS,
@@ -22,7 +22,7 @@ import {
   REDACTED,
   redactErrorText,
   redactText,
-} from './secret-patterns';
+} from './secret-patterns.js';
 
 /** Substituted for a log argument whose redaction itself failed (a throwing getter, say). */
 const UNREDACTABLE = '[UNREDACTABLE]';

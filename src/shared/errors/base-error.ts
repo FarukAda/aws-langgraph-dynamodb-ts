@@ -8,8 +8,8 @@
  * anything reads it.
  */
 
-import type { WriteRequest } from '../dynamodb/client';
-import { ErrorCode } from './error-code';
+import type { WriteRequest } from '../dynamodb/client.js';
+import { ErrorCode } from './error-code.js';
 
 const ERROR_BRAND = Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error');
 
@@ -97,6 +97,14 @@ export type ErrorDetailsFor<C extends ErrorCode> = C extends keyof ErrorDetailsB
   ? ErrorDetailsByCode[C]
   : undefined;
 
+/** A field of a code's details, as far as copying it is concerned. */
+type DetailField = object | string | number | boolean | null | undefined;
+
+/** Whether a details field is a list, which the copy copies too. */
+function isList(field: DetailField): field is readonly DetailField[] {
+  return Array.isArray(field);
+}
+
 /**
  * A shallow copy of `details` with every array copied too, so a caller reusing
  * its request buffer or failure list cannot rewrite what the error reported.
@@ -105,8 +113,9 @@ export type ErrorDetailsFor<C extends ErrorCode> = C extends keyof ErrorDetailsB
  */
 function copyDetails<D>(details: D): D {
   if (details === null || typeof details !== 'object') return details;
+  const fields = Object.entries(details as Record<string, DetailField>);
   return Object.fromEntries(
-    Object.entries(details).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+    fields.map(([key, value]) => [key, isList(value) ? [...value] : value]),
   ) as D;
 }
 
@@ -170,9 +179,11 @@ export type AnyDynamoDBLangGraphError = { [C in ErrorCode]: DynamoDBLangGraphErr
 /**
  * Whether `value` is one of this library's errors.
  *
- * Accepts: any error, from any realm or any copy of this package — and, since
- * the documented place to call this is inside a `catch`, any other value a
- * `throw` can produce: `null`, `undefined`, a string, a number, a symbol.
+ * Accepts: whatever a `catch` clause binds, as it is — an error from any realm
+ * or any copy of this package, and any other value a `throw` can produce:
+ * `null`, `undefined`, a string, a number, a symbol. Declared `unknown`
+ * because that is what `strict` types a `catch` binding, and the documented
+ * place to call this is the first line inside one.
  *
  * Returns: whether it carries the brand, narrowed to the union discriminated by
  * `code`. A symbol registered by name, not `instanceof`: two copies of this
@@ -188,7 +199,7 @@ export type AnyDynamoDBLangGraphError = { [C in ErrorCode]: DynamoDBLangGraphErr
  * a guard that throws inside the `catch` it was called from would replace the
  * failure the caller is reporting with one of its own.
  */
-export function isDynamoDBLangGraphError(value: Error): value is AnyDynamoDBLangGraphError {
+export function isDynamoDBLangGraphError(value: unknown): value is AnyDynamoDBLangGraphError {
   return typeof value === 'object' && value !== null && ERROR_BRAND in value;
 }
 

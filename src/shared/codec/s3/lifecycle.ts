@@ -17,15 +17,15 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
-import { sleep } from '../../dynamodb/retry';
-import { DynamoDBLangGraphError } from '../../errors/base-error';
-import { isMissingLifecycleConfiguration } from '../../errors/classify';
-import { ErrorCode } from '../../errors/error-code';
-import { validationError } from '../../errors/errors';
-import type { Logger } from '../../logging/logger';
-import { truncateForLog } from '../../logging/truncate';
-import { loadS3Sdk } from './client';
-import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
+import { sleep } from '../../dynamodb/retry.js';
+import { DynamoDBLangGraphError } from '../../errors/base-error.js';
+import { isMissingLifecycleConfiguration } from '../../errors/classify.js';
+import { ErrorCode } from '../../errors/error-code.js';
+import { validationError } from '../../errors/errors.js';
+import type { Logger } from '../../logging/logger.js';
+import { truncateForLog } from '../../logging/truncate.js';
+import { loadS3Sdk } from './client.js';
+import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config.js';
 
 /**
  * Days a released payload's noncurrent version survives behind its delete

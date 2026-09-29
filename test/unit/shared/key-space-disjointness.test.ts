@@ -25,7 +25,7 @@ import { parsedSearch } from '../../shared/helpers/parsed-inputs';
 import { simulatedScan } from '../../shared/helpers/simulated-scan';
 
 /**
- * C1/C2: every adapter used to write a bare, untagged caller-supplied string
+ * Every adapter used to write a bare, untagged caller-supplied string
  * as its partition key, so one identifier reused across adapters on a table
  * shared via `DynamoDBFactory.createAll()` put unrelated rows in one
  * partition. `deleteThread`/`history.clear` then deleted the whole partition,

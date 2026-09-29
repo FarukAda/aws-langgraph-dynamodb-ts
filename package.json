@@ -26,15 +26,19 @@
   "bugs": {
     "url": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts/issues"
   },
-  "type": "commonjs",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "types": "./dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -42,7 +46,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
+    "build": "node scripts/clean.mjs && npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.build.json --removeComments --declaration false && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build:cjs": "tsc -p tsconfig.build.cjs.json --removeComments --declaration false && tsc -p tsconfig.build.cjs.json --emitDeclarationOnly && node scripts/mark-cjs.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:all": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" \"**/*.mjs\" --no-error-on-unmatched-pattern",
@@ -73,7 +79,11 @@
     "cpd": "jscpd ./src --threshold 2 --min-lines 3 --reporters console --silent --format typescript,javascript",
     "cpd:full": "jscpd ./src --threshold 2 --min-lines 3 --reporters console-full --format typescript,javascript",
     "cpd:test": "jscpd ./test --threshold 2 --min-lines 3 --reporters console-full --format typescript,javascript",
-    "pack:check": "node scripts/pack-check.mjs && publint && attw --pack . --profile node16"
+    "example:checkpointer": "npm run build && node examples/live-checkpointer.mjs",
+    "example:persist": "npm run build && node examples/live-persist.mjs",
+    "example:store": "npm run build && node examples/live-store.mjs",
+    "example:agent": "npm run build && node examples/live-agent.mjs",
+    "pack:check": "node scripts/pack-check.mjs && publint && attw --pack ."
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1132.0",

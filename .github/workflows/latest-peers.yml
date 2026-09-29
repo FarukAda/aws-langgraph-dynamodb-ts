@@ -1,0 +1,76 @@
+name: Latest peers
+
+# Early warning, not a gate. The peer ranges admit minor releases this package
+# has not been tested with, and the option objects LangGraph defines ignore keys
+# it adds (docs/decisions, record 28), so a change upstream would otherwise reach
+# a user before it reached a maintainer. Weekly, against the newest releases, on
+# DynamoDB Local only: no AWS account is involved, so nothing is billed. Not a
+# required check, and not in scripts/required-checks.json: a release is gated on
+# the ranges it declares, not on whatever upstream shipped this week.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latest-peers
+  cancel-in-progress: true
+
+jobs:
+  latest-peers:
+    name: latest peers (typecheck, unit, conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:3.3.1
+        ports:
+          - 8000:8000
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --no-save: the lockfile is what CI and the release test; this run
+      # only asks what the newest releases would do.
+      - name: Install the newest LangGraph and LangChain releases
+        run: npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest
+
+      # Fails first when LangGraph adds a key to an option object this package
+      # ignores at run time (test/types/upstream-option-keys.test.ts).
+      - name: Type check (full program)
+        run: npm run typecheck:all
+
+      - name: Unit tier
+        run: npm test -- --ci
+
+      - name: Wait for DynamoDB Local
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
+                2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
+              echo "DynamoDB Local is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "DynamoDB Local never came up." >&2
+          exit 1
+
+      - name: Conformance tier (LangGraph contract on DynamoDB Local)
+        run: npm run test:conformance
+        env:
+          DDB_LOCAL_ENDPOINT: http://localhost:8000

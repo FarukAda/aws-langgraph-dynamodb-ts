@@ -17,18 +17,18 @@ import { randomUUID } from 'node:crypto';
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
-import { nowMs } from '../clock';
-import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
-import { hasErrorCode } from '../errors/base-error';
-import { classifyAwsError, mayStillBeInFlight } from '../errors/classify';
-import { ErrorCode } from '../errors/error-code';
-import { retryBudgetMayStillLand } from '../errors/errors';
-import { isAbortError } from './abort';
-import { conditionalCheckFailure } from './cancellation';
-import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client';
-import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
-import type { RetryOptions } from './retry';
-import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema';
+import { nowMs } from '../clock.js';
+import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec.js';
+import { hasErrorCode } from '../errors/base-error.js';
+import { classifyAwsError, mayStillBeInFlight } from '../errors/classify.js';
+import { ErrorCode } from '../errors/error-code.js';
+import { retryBudgetMayStillLand } from '../errors/errors.js';
+import { isAbortError } from './abort.js';
+import { conditionalCheckFailure } from './cancellation.js';
+import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client.js';
+import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry.js';
+import type { RetryOptions } from './retry.js';
+import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema.js';
 
 /**
  * What a row write needs of its adapter: the document client, the table, and
@@ -603,9 +603,8 @@ export function offloadedKey(descriptor: PayloadDescriptor | undefined): string 
  * Throws: nothing.
  */
 export function identityOf(probe: RowProbe, row: AttributeMap | undefined): string | undefined {
-  const stored = row?.[probe.attribute];
-  if (probe.kind === 'attribute') return stored as string | undefined;
-  return offloadedKey(stored as PayloadDescriptor | undefined);
+  if (probe.kind === 'attribute') return row?.[probe.attribute] as string | undefined;
+  return offloadedKey(row?.[probe.attribute] as PayloadDescriptor | undefined);
 }
 
 /**

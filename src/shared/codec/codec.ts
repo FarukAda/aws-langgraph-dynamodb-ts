@@ -16,19 +16,19 @@ import {
   hasErrorCode,
   isDynamoDBLangGraphError,
   toError,
-} from '../errors/base-error';
-import { classifyAwsError, isMissingObject } from '../errors/classify';
-import { ErrorCode } from '../errors/error-code';
-import { validationError } from '../errors/errors';
-import { truncateForLog } from '../logging/truncate';
+} from '../errors/base-error.js';
+import { classifyAwsError, isMissingObject } from '../errors/classify.js';
+import { ErrorCode } from '../errors/error-code.js';
+import { validationError } from '../errors/errors.js';
+import { truncateForLog } from '../logging/truncate.js';
 import {
   type CompressionConfig,
   type CompressionResult,
   compress,
   decompress,
-} from './compression';
-import { bytesHoldDeclaredForm } from './json-serde';
-import type { S3Offloader } from './s3/offloader';
+} from './compression.js';
+import { bytesHoldDeclaredForm } from './json-serde.js';
+import type { S3Offloader } from './s3/offloader.js';
 
 /**
  * Largest serialized payload stored inline when no S3 offloader is configured:
@@ -279,7 +279,7 @@ export async function loadPayloadValue<T>(
   deps: CodecDeps,
 ): Promise<T> {
   try {
-    return await deps.serde.loadsTyped(serdeType, bytes);
+    return (await deps.serde.loadsTyped(serdeType, bytes)) as T;
   } catch (error) {
     const refusal = toError(error as Error);
     if (isDynamoDBLangGraphError(refusal)) throw refusal;
