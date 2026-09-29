@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`putWrites` keeps at most 32 regular writes in flight.** It sent every pending write at once, so a large `Send` fan-out queued far more requests than the SDK agent's 50 sockets; the request timeout counts that queue, so a wider fan-out, larger values, or an injected client with a shorter request timeout could time out healthy writes that this package then re-sends. The README also no longer says a re-sent regular write overwrites: it is first-write-wins.
 - **`reconcileVectorIndex` no longer prunes the vector of an item re-put during the reconcile.** A candidate the snapshot had seen yielding no embedding was pruned on that evidence alone, so an item re-put with indexable text in between lost the vector its put had just synced. The row's revision is now re-read first.
 - **A download refused on its declared `Content-Length` releases its socket.** The body stream was left unread and open until the idle timer closed it.
+- **`examples/live-checkpointer.mjs` deletes the demo table only when it created it.** It reused an existing table and then deleted it unconditionally, so pointing `LANGGRAPH_DEMO_TABLE` at a real table deleted that table.
 
 ### Documentation
 
@@ -82,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `BackfillResult.scanned` counts the rows the scan returned.
   - The doc comments on the write-settlement rule cover `TransactionInProgressException` and a 5xx, and cite AWS's error-handling guide for a 500 rather than the `TransactWriteItems` reference.
   - `store.search` documents `RESULT_TRUNCATED`; `copyForCaller` and the error boundary document what they copy and stamp.
+
+### Internal
+
+- Dependabot raises a range only when a new version falls outside it (`versioning-strategy: increase-if-necessary`), so a routine update no longer moves a dependency or peer floor; the CI wait loop prints its attempt number; `run-with-timeout` says why when its command cannot be started; `engines.npm` is gone from the manifest, where nothing enforced it and it only warned consumers on other package managers — the npm floor for development is in `CONTRIBUTING.md`.
 
 ## [1.0.0-rc.2] - 2026-09-27
 

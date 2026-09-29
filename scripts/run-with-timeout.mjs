@@ -38,7 +38,8 @@ const KILL_GRACE_MS = 10_000;
  * Run `command` with `args`, killing it — and its whole process tree — if it
  * is still alive `timeoutMs` after it starts.
  *
- * Returns `{ status, timedOut }`. `status` is the child's own exit code when
+ * Returns `{ status, timedOut }`, and `error` too when the command could not be
+ * started (`status` is then 1). `status` is the child's own exit code when
  * it finished on its own before the timeout. Once a kill has been sent,
  * `status` is fixed at `null` regardless of what the child then reports —
  * POSIX and Windows represent a killed process differently (a signal versus
@@ -135,6 +136,13 @@ if (isMain(import.meta.url)) {
     console.error('usage: node scripts/run-with-timeout.mjs <timeoutSeconds> -- <command> [args...]');
     process.exit(1);
   }
-  const { status, timedOut } = await runWithTimeout(parsed.command, parsed.args, parsed.timeoutMs);
+  const { status, timedOut, error } = await runWithTimeout(
+    parsed.command,
+    parsed.args,
+    parsed.timeoutMs,
+  );
+  if (error !== undefined) {
+    console.error(`run-with-timeout: could not start "${parsed.command}": ${error.message}`);
+  }
   process.exit(timedOut ? 124 : (status ?? 1));
 }

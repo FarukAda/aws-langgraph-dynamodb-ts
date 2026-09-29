@@ -8,7 +8,7 @@ Thank you for helping. This guide is the operational one; the [README](README.md
 git clone https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git
 cd aws-langgraph-dynamodb-ts
 nvm use                # reads .nvmrc (22)
-npm ci                  # Node 22, 24 or 26
+npm ci                  # Node 22, 24 or 26, with npm 10 or later
 npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm run check:docs && npm run check:links
 ```
 

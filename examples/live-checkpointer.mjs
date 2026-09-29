@@ -2,7 +2,8 @@
  * Live demo: a real LangGraph agent backed by DynamoDBSaver against real AWS
  * DynamoDB. Creates a table, runs a graph across two separate saver instances
  * (proving state is resumed from DynamoDB, not memory), shows history,
- * time-travel, and thread deletion, then cleans up.
+ * time-travel, and thread deletion, then cleans up: it deletes the table only
+ * if it created it, so a table that already existed is left in place.
  *
  * Run: AWS_REGION=<region> node examples/live-checkpointer.mjs
  */
@@ -43,9 +44,11 @@ async function ensureTable() {
     );
     await waitUntilTableExists({ client: admin, maxWaitTime: 60 }, { TableName: TABLE });
     log(`   created table "${TABLE}" in ${REGION}`);
+    return true;
   } catch (error) {
-    if (error.name === 'ResourceInUseException') log(`   table "${TABLE}" already exists — reusing`);
-    else throw error;
+    if (error.name !== 'ResourceInUseException') throw error;
+    log(`   table "${TABLE}" already exists — reusing`);
+    return false;
   }
 }
 
@@ -66,7 +69,7 @@ function buildGraph(saver) {
 }
 
 async function run() {
-  await ensureTable();
+  const created = await ensureTable();
   const thread = { configurable: { thread_id: 'demo-thread' } };
 
   section('2. First turn (saver A) — writes a checkpoint to DynamoDB (gzip on)');
@@ -106,10 +109,14 @@ async function run() {
   log('   getTuple after delete:', afterDelete === undefined ? 'undefined (gone)' : 'STILL THERE');
   saverB.destroy();
 
-  section('8. Cleanup — delete the table');
-  await admin.send(new DeleteTableCommand({ TableName: TABLE }));
+  section('8. Cleanup');
+  if (created) {
+    await admin.send(new DeleteTableCommand({ TableName: TABLE }));
+    log('   table deleted');
+  } else {
+    log(`   table "${TABLE}" existed before this demo — left in place`);
+  }
   admin.destroy();
-  log('   table deleted');
   log('\nDONE — DynamoDBSaver verified end-to-end on real AWS DynamoDB.');
 }
 
