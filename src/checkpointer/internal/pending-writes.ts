@@ -344,7 +344,10 @@ export interface SpecialWriteOutcome {
 /** What a post-failure verification read established about the attempt. */
 export interface VerifiedFailure {
   outcome: SpecialWriteOutcome;
-  /** Present only when the row was read and holds some other writer's group. */
+  /**
+   * Present only when the attempt is confirmed not to have landed: the row's
+   * state, for a compare-and-swap to re-pin to.
+   */
   observed?: SpecialRowState;
 }
 
@@ -410,15 +413,19 @@ export async function readSpecialRow(
  * Five answers are possible:
  * - the row holds this item's own `writeGroup`: the write landed, and the
  *   descriptor this attempt pinned is the dead one.
- * - the row holds some other group, and has moved on from what this attempt
- *   was pinned to: the write is confirmed not to be what is live, so this
- *   item's own upload is dead — its key ends in this call's own group, which
- *   that row does not name. `observed` is returned so a rejected
- *   compare-and-swap can re-pin and try again.
- * - the row does not hold this item's group but still fits this attempt — still
- *   holding exactly the state the attempt was pinned to (for a `#rev = :rev`
- *   pin, an absent row has moved on, so it does not fit), or this attempt was
- *   never pinned at all (the unconditional overwrite) — and the failure may
+ * - the row no longer satisfies this attempt's condition — it holds some other
+ *   group than the one the attempt was pinned to, or it is absent while the
+ *   attempt was pinned to a revision (`#rev = :rev`): the write is confirmed
+ *   not to be what is live and can no longer apply, so this item's own upload
+ *   is dead — its key ends in this call's own group, which no row names.
+ *   `observed` is returned so a rejected compare-and-swap can re-pin and try
+ *   again.
+ * - the row does not hold this item's group but still satisfies this attempt's
+ *   condition — it holds exactly the state the attempt was pinned to; or the
+ *   attempt was pinned to "no revision" and the row is absent, which that
+ *   `attribute_not_exists` guard admits too; or this attempt was never pinned
+ *   at all (the unconditional overwrite, which fits any row, a third writer's
+ *   included) — and the failure may
  *   still land: any attempt of its budget got no answer (a cancel, a timeout,
  *   a dropped connection), or DynamoDB answered that an earlier attempt under
  *   this same token is still being processed, or with a server error (5xx).
@@ -437,8 +444,9 @@ export async function readSpecialRow(
  * `pinned` — false for the unconditional overwrite, whose attempt can land
  * over any row.
  *
- * Returns: the outcome, and the row's observed state when another writer holds
- * it, so a rejected compare-and-swap can re-pin and try again.
+ * Returns: the outcome, and the row's observed state whenever the attempt is
+ * confirmed not to have landed, so a rejected compare-and-swap can re-pin and
+ * try again.
  *
  * Throws: nothing. It exists to turn a failure into a decision.
  *
@@ -471,10 +479,20 @@ export async function verifyAfterFailure(
   return { outcome: { committed: false, error }, observed: stateOf(read.row) };
 }
 
-/** Whether `row` is still in the state an attempt was pinned to, so that attempt could still apply. */
+/**
+ * Whether `row` still satisfies the condition an attempt carries, so that
+ * attempt could still apply. An attempt pinned to "no row" fits only an absent
+ * row, and one pinned to a revision fits only a row holding that revision. One
+ * pinned to "no revision" is guarded by `attribute_not_exists` on the revision,
+ * which an absent row satisfies too, so it fits a row without a revision and an
+ * absent row alike: a row deleted meanwhile, by `deleteThread` or the TTL sweep,
+ * is one the attempt can still create.
+ */
 function stillPinned(attempted: SpecialRowState, row: AttributeMap | undefined): boolean {
   const current = stateOf(row);
-  return current.exists === attempted.exists && current.revision === attempted.revision;
+  if (current.revision !== attempted.revision) return false;
+  if (current.exists === attempted.exists) return true;
+  return !current.exists && attempted.revision === undefined;
 }
 
 /**
@@ -529,8 +547,10 @@ async function deleteDescriptors(
  *
  * Guarantees: a superseded payload is released only once the item that
  * superseded it committed, and an item's own upload only once a read, or the
- * row returned with its rejected write, shows the row holding another call's
- * write or no row at all.
+ * row returned with its rejected write, shows that the item's write is not what
+ * the row holds and can no longer land there: the row no longer satisfies the
+ * attempt's condition, or the failure left no attempt in flight (see
+ * {@link verifyAfterFailure}).
  */
 export async function writeSpecialRowsWithCleanup(
   context: CheckpointerContext,
