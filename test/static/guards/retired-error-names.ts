@@ -93,6 +93,16 @@ const ALLOWED_USES: readonly AllowedUse[] = [
     text: "Code: 'ValidationError'",
     reason: "AWS's own ValidationError transaction cancellation reason",
   },
+  {
+    file: 'README.md',
+    text: '`BatchWriteAllIncompleteError`, `BatchWriteIncompleteError`, `CompensationFailedError`, `ConflictError`, `ResultTruncatedError`, `RetryExhaustedError` and `ValidationError`',
+    reason: 'the 0.9 to 1.0.0 upgrade guide names the classes a reader must stop testing for',
+  },
+  {
+    file: 'README.md',
+    text: '0.9 tested `error instanceof ValidationError`',
+    reason: 'the upgrade guide sample shows the 0.9 call it replaces',
+  },
 ];
 
 /** A retired name, singular or plural, as a whole word. */

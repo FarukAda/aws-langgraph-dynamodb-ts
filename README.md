@@ -1257,6 +1257,112 @@ The items are written with `batch` rather than `put`: `put()` alone applies upst
 
 ### Migrating from earlier versions
 
+**0.9.x → 1.0.0.** No data migration: `1.0.0` reads a table `0.9.x` wrote as it is. The attributes `1.0.0` adds are additive:
+- the row format version `v`;
+- `writeId`;
+- `schemaVersion` inside payload descriptors;
+- the recency-index keys on checkpoint `META` and history `SESSION` rows.
+
+Before upgrading a live table, take a backup (on-demand or point-in-time recovery). `0.9.x` has not been tested against rows `1.0.0` writes, so a rollback should restore the table, not read it with the older release. Run one version against a table at a time.
+
+What your code has to change, most common first:
+
+- **Errors are one class, branched on by `code`.**
+  - `DynamoDbLangGraphError` is now `DynamoDBLangGraphError` (note the capital *B*), with no alias.
+  - The subclasses `AbortError`, `BatchWriteAllIncompleteError`, `BatchWriteIncompleteError`, `CompensationFailedError`, `ConflictError`, `ResultTruncatedError`, `RetryExhaustedError` and `ValidationError` are gone. Test with `isDynamoDBLangGraphError(error)` and branch on `error.code`; `error.name` is always `'DynamoDBLangGraphError'`.
+  - A validation error names the offending input in `context.field`, not in `context.operation`.
+  - The counts a batch error and a compensation error carried (`succeededCount`, `unprocessed`, `failedChunks`, `rollbackError` and the rest) are under `details`, and `JSON.stringify(error)` nests them there.
+  - Raw AWS SDK errors no longer escape. Each is wrapped with its classified code (`THROTTLED`, `SERVICE_UNAVAILABLE`, `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`, `AWS_REQUEST_FAILED`), and `context.awsErrorName`, `requestId` and `httpStatusCode` are lifted off the SDK error. Code that matched `error.name === 'AccessDeniedException'` reads `error.code` or `error.context.awsErrorName`.
+  - `FORMAT_UNSUPPORTED`, `ANCESTOR_EXPIRED`, `PAYLOAD_CORRUPT` and `UNEXPECTED_ERROR` are new codes too (`S3_OFFLOAD_FAILED` already existed in `0.9`).
+  - `history.addMessages` fails with `COMPENSATION_FAILED` whenever a chunk's outcome cannot be established, a single-message append included, since it is one chunk. It used to roll back and rethrow the chunk's own error, which tells a caller retrying on ordinary errors that the session is back where it began. Do not retry on `COMPENSATION_FAILED`; run `reconcileMessageCount` ([decision record 25](docs/decisions/0025-treat-a-write-that-got-no-answer-as-one-that-may-still-land.md)).
+  - `destroy()` on a factory or an adapter is idempotent and raises a `DynamoDBLangGraphError` (`UNEXPECTED_ERROR`, or the AWS code) when a client fails to close, with the client's error as `cause`. It let the raw error escape.
+  - [Error handling](#error-handling) lists every code.
+
+  ```ts
+  import {
+    DynamoDBStore,
+    ErrorCode,
+    isDynamoDBLangGraphError,
+  } from '@farukada/aws-langgraph-dynamodb-ts';
+
+  const store = new DynamoDBStore({ tableName: 'langgraph' });
+
+  try {
+    await store.put(['users', 'u1'], 'profile', { name: 'Ada' });
+  } catch (caught) {
+    const error = caught as Error;
+    // 0.9 tested `error instanceof ValidationError` and read `error.context.operation`.
+    if (isDynamoDBLangGraphError(error) && error.code === ErrorCode.VALIDATION) {
+      console.warn(error.context.field);
+    }
+  }
+  ```
+
+- **Dependencies.**
+  - `@langchain/langgraph` is no longer a peer, so depend on it yourself.
+  - The peer floors are `@langchain/core` `^1.2.11` (was `^1.2.9`) and the optional `@aws-sdk/client-s3` `^3.1132.0` (was `^3.900.0`); `@langchain/langgraph-checkpoint` stays `^1.1.5`.
+  - The dependencies are `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1132.0` (was `^3.1116.0`), and the new `@aws-sdk/util-dynamodb`.
+- **Inputs that are now refused with `VALIDATION`**, naming what is wrong. Each was accepted, ignored or reported as an AWS failure before:
+  - an option key the adapter does not read (`options.<key>`), on every options object, every per-call options object and every `{ signal }`, and a non-object options value;
+  - a number past its ceiling (see [Limits](#limits)), and a read cap (`maxItems`, `maxIterations`) that is not an integer of at least 1;
+  - an identifier over its byte cap (1024 bytes for `thread_id`/`sessionId`, 512 for `checkpoint_ns`, 256 for every other segment) or holding a control character. `0.9` measured none of these, so a row already stored under a longer identifier can no longer be addressed;
+  - a `ttl` that is not exactly one unit of at most five years;
+  - an `s3.keyPrefix` that is not a real path ending in `/` (no empty, `.` or `..` segment), also from `ensureS3LifecycleRule()`, which refuses an empty or root prefix too;
+  - an `s3.maxDownloadBytes` below `s3.thresholdBytes`, refused at construction, and an offloaded payload larger than `s3.maxDownloadBytes`, refused at the write (naming `payload`) before it is uploaded. Both used to fail only at the first read. A payload larger than `compression.maxDecompressedBytes` is now stored uncompressed instead of compressed past the cap;
+  - a collaborator missing a method it must provide (`client`, `logger`, `serde`, `index.embeddings`, `vectorBackend`), and an injected `client` built with `unmarshallOptions.wrapNumbers` or `marshallOptions.convertEmptyValues: true`, naming `client`. Such a client silently misread or erased rows, so its translation config must stay at the defaults, and every adapter and `backfillRecencyIndex` refuse it;
+  - a `limit` above 10 000, `saver.list(config, { limit: -1 })`, and `limit: 0` on `getMessages` and the `forSession` window;
+  - on the saver, a non-object `config` or `configurable`, a checkpoint id of `0`, `false` or `NaN`, and a malformed `before`, `filter`, `checkpoint`, `writes` or `getDeltaChannelHistory` argument;
+  - `store.put(namespace, key, null)` (call `delete` instead), an empty namespace or a `"langgraph"` root, and a non-string `query` or a non-object `filter` on `search`;
+  - a store row over DynamoDB's 400 KB item limit, refused before anything is written and its upload released, naming `index` when the vectors pushed it over (a wildcard `index.fields` path yields one vector per element);
+  - a `serde` that encodes a value to zero bytes, and `getMessages({ before })` with a date before the epoch or at or after 2^50 ms;
+  - on the store, `indexName` and `indexShards`, which are unknown options now: drop them. No store read uses the recency index, and store rows no longer carry its keys.
+- **Behaviour you may observe:**
+  - `history.listSessions()` returns `{ sessions, nextCursor? }`; read `.sessions`.
+  - `history.forSession()` checks its arguments at the call, not inside the promise a runnable awaits.
+  - `saver.list()` without a `thread_id` lists every thread (it threw).
+  - `getTuple` for a config naming no thread answers `undefined`.
+  - `saver.put()` persists only the channels `newVersions` names, plus those the parent stored.
+  - `store.batch()` answers a put or a delete with `null`.
+  - `store.delete()` reads before it deletes, and can resolve with the item still there ([V-29](#differences-from-the-reference-implementations)).
+  - `deleteThread()` and `clear()` skip a row rewritten since their read.
+  - A read that meets a row a newer release wrote raises `FORMAT_UNSUPPORTED` instead of skipping it.
+  - `history.getMessages` reports a row this adapter did not write, an out-of-scope `s3Key` and a payload the serializer refuses (`VALIDATION`, `context.field` `'serde'`) under both `onCorruptMessage` policies, and fails on `COMPRESSION_LIMIT` under `'skip'` too (next item).
+  - A `vectorBackend` search fails when it cannot re-read a match.
+  - An offloaded write is a one-item transaction (two write units per KB), and a tokened write stops retrying 300 s in.
+  - A cancel through an `AbortSignal` ends the request in flight and rejects with `ABORTED`.
+- **Rows written by an earlier release past a custom `compression.maxDecompressedBytes`.** Before this release, compression ignored that cap, so a payload could be stored compressed past a reader's custom cap. `COMPRESSION_LIMIT` is now a refusal, not payload loss: a history row written that way makes `getMessages` fail under the default `onCorruptMessage: 'skip'` as well, where it used to drop the message with an `error` log. Raise `compression.maxDecompressedBytes` on the reader to read such rows.
+- **Only if you ran `1.0.0-rc.2`** (a `0.9.x` table has none of this):
+  - Store rows it wrote keep their `STORE`-tagged `gsi1pk`/`gsi1sk` until the item's next put or delete, or its TTL expiry. No reader sees them, but each keeps an `ALL`-projected copy in the index, billed as index storage. A one-off `UpdateItem` with `REMOVE gsi1pk, gsi1sk` over the `STORE#` rows reclaims it.
+  - A session row it wrote with an id of 1000 to 1024 bytes, on a table without the index, has a `gsi1sk` over 1024 bytes. DynamoDB's index backfill leaves it out, and `backfillRecencyIndex()` skips it because it already has keys. Until its next `addMessages` rewrites the key, the session is missing from indexed listings and `reconcileMessageCount` on it is refused.
+  - A row with a `checkpoint_ns` of 257 to 512 bytes, which `1.0.0` accepts, cannot be read by `rc.2`.
+  - `SessionBackend`, the deprecated alias `rc.1` and `rc.2` exported, is removed (`0.9` never exported it): use `MultiSessionHistory`.
+- **IAM:**
+  - `dynamodb:Scan` is needed only by the table-wide reads (`saver.list()` without a `thread_id`, `history.listSessions()` without `indexName`, a rootless `store.search([])` or `listNamespaces()`, `backfillRecencyIndex()`).
+  - `ensureS3LifecycleRule()` also reads `s3:GetBucketVersioning`.
+  - `s3:ListBucket` is recommended ([IAM permissions](#iam-permissions)).
+- **Packaging:**
+  - The tarball ships no source maps and declares `sideEffects: false`.
+  - The `createClient` and `createS3Client` hooks are internal.
+  - `package.json` is exported for tooling.
+
+Worth adopting once upgraded:
+- the recency index (`indexName`, `indexShards`, `backfillRecencyIndex()` — run the backfill first) for the saver and the history;
+- `readConcurrency`, `retry` and `{ signal }` cancellation;
+- `getMessages({ limit, before })` and the `forSession` window;
+- `JSON_SERDE` for a checkpointer whose table's writers you do not trust ([Trust boundary](#trust-boundary));
+- the two operator sweeps ([Finding rows whose payload was released](#finding-rows-whose-payload-was-released), [Finding objects no row names](#finding-objects-no-row-names)).
+
+The CHANGELOG's `1.0.0-rc.1` and `1.0.0-rc.2` sections, and the `[Unreleased]` section until `1.0.0` is cut, hold every change in full.
+
+**0.8.x → 0.9.0.** No migration: `0.8.0` data stays readable. The new `occurrence` attribute on checkpointer WRITE rows and `rev` on store rows are additive. The observable changes:
+- a malformed store `index` is refused at construction;
+- `vectorScoreDirection` is new, for a distance-native `vectorBackend`;
+- a stored `NaN` no longer satisfies `$lt`/`$lte`;
+- an unquoted credential value is redacted to the end of its line;
+- `list()` warns once past 10 000 rows scanned.
+
+See the CHANGELOG's `0.9.0` section.
+
 **0.7.x → 0.8.0**: **every adapter's partition key is now adapter-tagged** —
 `PK = <thread_id>` → `CHKPT#<thread_id>`, `PK = <namespace[0]>` →
 `STORE#<namespace[0]>`, `PK = <sessionId>` → `HIST#<sessionId>` — and the

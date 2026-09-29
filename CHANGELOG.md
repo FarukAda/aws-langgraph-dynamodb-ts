@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **An upgrade guide from `0.9.x` (and `0.8.x`) to `1.0.0`** in the README's *Migrating from earlier versions*: what data needs (nothing, with a backup first), and what code changes — the one error class, the dependency floors, the inputs now refused, the behaviour a caller can observe, rows an earlier release wrote past a custom decompression cap, the leftovers of `1.0.0-rc.2`, IAM and packaging.
 - The IAM policy recommends `s3:ListBucket` on the offload bucket, with why: without it S3 reports a missing object as `AccessDenied`, which the library cannot tell from a refused one.
 - `indexShards` is documented as fixed for the table's life: the backfill writes keys only to rows that have none and cannot re-shard, raising the count is safe, and lowering it hides rows.
 - The README no longer says leaked objects are "all reclaimed by `ensureS3LifecycleRule()`": that holds only with a `ttl`, and the new orphan sweep finds and, with `--delete`, removes them on a deployment without one — though on a versioned bucket, freeing the storage `--delete` leaves behind as a delete marker still needs a noncurrent-version-expiration and delete-marker-reclaim rule, which only `ttl` gets written automatically. The same claim, and a decision record saying a TTL-less deployment "has no backstop at all", are corrected in the same places in the guide and `docs/decisions/0005`.
