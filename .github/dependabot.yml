@@ -12,6 +12,13 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    ignore:
+      # Dev-only (examples/live-agent.mjs). langchain 1.5.12 and later raise
+      # their @langchain/core peer above this package's declared floor, so the
+      # `peer dependency floors` CI job cannot install the floor next to them.
+      # Lift this when the @langchain/core floor moves in a release.
+      - dependency-name: langchain
+        versions: [">=1.5.12"]
     groups:
       aws-sdk:
         patterns:
