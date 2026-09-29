@@ -215,9 +215,9 @@ export function hasErrorCode<C extends ErrorCode>(
  * A caller's own copy of a branded error that several concurrent callers would
  * otherwise share — a cached rejected import, a cached rejected client build.
  * Sharing the one instance is safe while nothing on the path back to a public
- * method writes to it, but the public boundary does: it stamps `context.operation`
- * and `context.tableName` on an error that names neither, in place, and a
- * second caller reaching the same shared instance through a *different*
+ * method writes to it, but the public boundary does: it stamps
+ * `context.operation` and `context.tableName`, each independently when the
+ * error does not already carry it, in place, and a second caller reaching the same shared instance through a *different*
  * public method would then find the first caller's operation and table
  * already sitting in its own context, unable to write its own. Giving each
  * caller its own instance up front — same `message`, `code`, `context` and
@@ -230,7 +230,10 @@ export function hasErrorCode<C extends ErrorCode>(
  *
  * Returns: a new `DynamoDBLangGraphError` carrying the same `message`, `code`,
  * `context`, `cause` and `details` as `error`, when `error` already was one;
- * `error` itself, unchanged, for anything else.
+ * `error` itself, unchanged, for anything else. The copy does not carry
+ * `RETRY_EXHAUSTED`'s non-enumerable record of whether a write's retry budget
+ * may still land, so it is not for a budget error: a caller judging one asks
+ * the original.
  *
  * Throws: nothing, for any value.
  */

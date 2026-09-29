@@ -85,8 +85,10 @@ import type { CheckpointerContext } from '../internal/setup';
  * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
  * and lost its response is reported as success, a confirmed non-commit cleans
  * up the objects this call uploaded, and an unverifiable outcome — a failed
- * read, or a failure that ended before DynamoDB answered, which DynamoDB may
- * still apply — leaks them rather than risk stranding a live row, and a put
+ * read, or a failure after which DynamoDB may still apply the write, because
+ * an attempt of its budget got no answer, was answered
+ * `TransactionInProgressException` or failed with a server error (5xx) —
+ * leaks them rather than risk stranding a live row, and a put
  * whose signal fired before the transaction was sent sends nothing and
  * releases its uploads. Each put uploads under an object id of its own, so no
  * row another put commits names this call's uploads.

@@ -24,8 +24,8 @@ describe('abortErrorFrom', () => {
    * choice, not something this library caches, and returning it unchanged
    * rather than a copy is what keeps a reason from accumulating wrappers
    * across layers. Whichever call's boundary reaches it first is the one its
-   * `context.operation` reports — documented in the boundary's own JSDoc and
-   * in the README where `operation` is defined.
+   * `context.operation` reports — documented in `stampContext`'s own JSDoc
+   * and in the README where `operation` is defined.
    */
   it('lets two calls sharing one reason see whichever boundary stamped it first', () => {
     const reason = abortError('shutting down');

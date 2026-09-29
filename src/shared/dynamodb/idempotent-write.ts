@@ -668,8 +668,10 @@ export function mayStillLand(failure: Error): boolean {
  * commit ({@link mayStillLand}): an absent row is exactly what an attempt still
  * on its way can fill, so the upload it names is not yet dead. Every other
  * verdict is returned unchanged. A caller whose write is pinned to a state the
- * row has already left asks this only when the pin still matches, since such a
- * write can no longer apply.
+ * row has already left may skip this, since such a write can no longer apply
+ * (the pending-writes verification does); `persistRow` asks it unconditionally,
+ * so its upload is kept whether the read found the row absent or holding
+ * another revision.
  *
  * Throws: nothing.
  */

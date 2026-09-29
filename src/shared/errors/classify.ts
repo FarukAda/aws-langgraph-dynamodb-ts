@@ -345,11 +345,13 @@ const SERVER_ERROR_STATUS_MAX = 599;
  * Returns: true when the attempt {@link endedWithoutAnswer}; when the service
  * answered that its own earlier attempt under the same `ClientRequestToken`
  * was still being processed (`TransactionInProgressException`); or when it
- * answered with a server error, an HTTP 5xx — which AWS documents as leaving a
- * write's outcome undecided rather than refused (`TransactWriteItems` API
- * reference, *Errors*: a 500 "may have succeeded or failed", with no later
- * point documented as settling it). False for a refusal, a throttle, or any
- * other definite answer.
+ * answered with a server error, an HTTP 5xx. AWS says of a 500
+ * (`InternalServerError`) that the request "may have succeeded or failed", with
+ * no later point documented as settling it (DynamoDB Developer Guide, *Error
+ * handling*:
+ * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html);
+ * this library treats every 5xx the same way. False for a refusal, a throttle,
+ * or any other definite answer.
  *
  * Throws: nothing, for any value.
  */

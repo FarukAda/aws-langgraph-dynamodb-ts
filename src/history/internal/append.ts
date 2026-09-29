@@ -442,9 +442,10 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
  * messages and count in one transaction; if a later chunk fails, every
  * already-committed chunk is deleted and its count reverted, and the batch's
  * S3 objects are cleaned once their rows are gone, restoring the pre-call
- * state before the error is rethrown. Except on a failed rollback, which
- * surfaces as `COMPENSATION_FAILED` and deliberately leaves the
- * committed chunks' S3 objects behind, since their rows may survive.
+ * state before the error is rethrown. Except on a failed rollback, or a chunk
+ * whose outcome cannot be established (below), which surface as
+ * `COMPENSATION_FAILED`; a failed rollback deliberately leaves the committed
+ * chunks' S3 objects behind, since their rows may survive.
  *
  * A failure that is not a refusal is ambiguous — the transaction may have
  * committed and lost its response — so the chunk is read back first. Present

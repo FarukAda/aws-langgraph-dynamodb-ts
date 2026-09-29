@@ -54,7 +54,8 @@ export enum ErrorCode {
    * `TransactionConflictException`, `TransactionInProgressException`,
    * `ReplicatedWriteConflictException`, S3's `ConditionalRequestConflict`, or a
    * cancelled transaction whose only transient cause is a conflict. Retry; more
-   * capacity would not help.
+   * capacity would not help. `ensureS3LifecycleRule()` raises it when every one
+   * of its five rounds needs a write.
    */
   CONTENTION = 'CONTENTION',
   /**
@@ -65,9 +66,11 @@ export enum ErrorCode {
    */
   ACCESS_DENIED = 'ACCESS_DENIED',
   /**
-   * The table, index, bucket or object is not there: `ResourceNotFoundException`,
-   * S3's `NoSuchBucket` or `NoSuchKey`. Not an absent item — a read of a key that
-   * holds nothing returns nothing.
+   * The table or the bucket is not there: `ResourceNotFoundException`, or S3's
+   * `NoSuchBucket` from the lifecycle calls. A missing index is `AWS_REJECTED`
+   * — DynamoDB refuses a query naming one with a `ValidationException` — and a
+   * missing S3 object on a transfer is `S3_OFFLOAD_FAILED`. Not an absent item:
+   * a read of a key that holds nothing returns nothing.
    */
   NOT_FOUND = 'NOT_FOUND',
   /**

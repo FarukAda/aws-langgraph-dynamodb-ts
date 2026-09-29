@@ -29,10 +29,19 @@ import { awsDiagnostics, classifiableCause, classifyAwsError } from './classify'
  * first catches the error stamps it, and every guard further out finds both
  * fields already there and changes neither.
  *
+ * An error is one object, so it is shared wherever the caller shares it: a
+ * signal whose `reason` is already one of this library's own `ABORTED` errors
+ * reaches every call that signal cancels as that same instance, and whichever
+ * call's boundary reaches it first is the one its `context.operation` (and
+ * `context.tableName`) report.
+ *
  * Never throws: a context this package cannot write to — frozen, or an older
- * release's own shape — is left exactly as it was, since this runs inside the
- * one place a public method's own `catch` would otherwise have the failure it
- * is reporting replaced by whatever this raised instead.
+ * release's own shape — is left as it was, and a context that accepts only some
+ * of the writes (one sealed while already holding an `operation` key, say, which
+ * takes `operation` but refuses a new `tableName`) keeps the fields written
+ * before the first refusal, since this runs inside the one place a public
+ * method's own `catch` would otherwise have the failure it is reporting
+ * replaced by whatever this raised instead.
  */
 function stampContext(
   error: AnyDynamoDBLangGraphError,

@@ -100,7 +100,7 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
   });
 
   /**
-   * Lag on every round but the last, which then finds a genuinely different
+   * Lag on every re-read but the last, which then finds a genuinely different
    * configuration. Only two writes ever happen, so this is not `CONTENTION`,
    * which needs every one of the five rounds to write — it ends exactly like
    * a lag exit, because this call cannot tell "a rival replaced it once more"

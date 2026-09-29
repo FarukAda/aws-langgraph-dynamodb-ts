@@ -298,7 +298,7 @@ export function decodeScanCursor(cursor: string): AttributeMap {
 
 /** What one pass of the backfill did, and where to resume. */
 export interface BackfillResult {
-  /** Rows the scan evaluated. */
+  /** Rows the scan returned: those without index keys, since its filter drops every row that has them. Not the rows DynamoDB evaluated, which a filter does not reduce. */
   scanned: number;
   /** Rows given index keys. */
   indexed: number;

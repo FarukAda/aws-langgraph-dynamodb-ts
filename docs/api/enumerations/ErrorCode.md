@@ -24,7 +24,7 @@ Defined in: [shared/errors/error-code.ts:33](https://github.com/FarukAda/aws-lan
 
 > **ACCESS\_DENIED**: `"ACCESS_DENIED"`
 
-Defined in: [shared/errors/error-code.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L66)
+Defined in: [shared/errors/error-code.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L67)
 
 AWS refused the caller's identity or permissions: `AccessDeniedException`,
 S3's `AccessDenied`, an expired, unrecognised or malformed credential or
@@ -48,7 +48,7 @@ be reconstructed and the read refuses rather than returning a shorter value.
 
 > **AWS\_REJECTED**: `"AWS_REJECTED"`
 
-Defined in: [shared/errors/error-code.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L79)
+Defined in: [shared/errors/error-code.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L82)
 
 AWS rejected the request as malformed: `ValidationException`,
 AWS's `ValidationError` common error, `IdempotentParameterMismatchException`,
@@ -61,7 +61,7 @@ fails the same way.
 
 > **AWS\_REQUEST\_FAILED**: `"AWS_REQUEST_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L81)
+Defined in: [shared/errors/error-code.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L84)
 
 An AWS request failed and no narrower code applies; `context.awsErrorName` names it.
 
@@ -103,13 +103,14 @@ Defined in: [shared/errors/error-code.ts:21](https://github.com/FarukAda/aws-lan
 
 > **CONTENTION**: `"CONTENTION"`
 
-Defined in: [shared/errors/error-code.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L59)
+Defined in: [shared/errors/error-code.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L60)
 
 Another request was writing the same item or object at the same moment:
 `TransactionConflictException`, `TransactionInProgressException`,
 `ReplicatedWriteConflictException`, S3's `ConditionalRequestConflict`, or a
 cancelled transaction whose only transient cause is a conflict. Retry; more
-capacity would not help.
+capacity would not help. `ensureS3LifecycleRule()` raises it when every one
+of its five rounds needs a write.
 
 ***
 
@@ -127,11 +128,13 @@ A row or payload written in a format version newer than this package reads.
 
 > **NOT\_FOUND**: `"NOT_FOUND"`
 
-Defined in: [shared/errors/error-code.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L72)
+Defined in: [shared/errors/error-code.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L75)
 
-The table, index, bucket or object is not there: `ResourceNotFoundException`,
-S3's `NoSuchBucket` or `NoSuchKey`. Not an absent item — a read of a key that
-holds nothing returns nothing.
+The table or the bucket is not there: `ResourceNotFoundException`, or S3's
+`NoSuchBucket` from the lifecycle calls. A missing index is `AWS_REJECTED`
+— DynamoDB refuses a query naming one with a `ValidationException` — and a
+missing S3 object on a transfer is `S3_OFFLOAD_FAILED`. Not an absent item:
+a read of a key that holds nothing returns nothing.
 
 ***
 
@@ -204,7 +207,7 @@ quota.
 
 > **UNEXPECTED\_ERROR**: `"UNEXPECTED_ERROR"`
 
-Defined in: [shared/errors/error-code.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L88)
+Defined in: [shared/errors/error-code.ts:91](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L91)
 
 A failure that came neither from this package's own checks nor from AWS:
 a `VectorBackend`, an `Embeddings` model, a `serde` or a `MultiSessionHistory`

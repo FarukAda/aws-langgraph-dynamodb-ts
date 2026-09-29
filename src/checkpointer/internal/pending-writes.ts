@@ -407,7 +407,7 @@ export async function readSpecialRow(
  * `rejectedRow`), so the strongly-consistent read is spent only for a failure
  * that does not: a lost response, or a rejection whose row vanished since.
  *
- * Four answers are possible:
+ * Five answers are possible:
  * - the row holds this item's own `writeGroup`: the write landed, and the
  *   descriptor this attempt pinned is the dead one.
  * - the row holds some other group, and has moved on from what this attempt
@@ -415,13 +415,18 @@ export async function readSpecialRow(
  *   item's own upload is dead — its key ends in this call's own group, which
  *   that row does not name. `observed` is returned so a rejected
  *   compare-and-swap can re-pin and try again.
- * - the row still fits this attempt — absent, or still holding exactly the
- *   state the attempt was pinned to, or this attempt was never pinned at all
- *   (the unconditional overwrite) — and the failure may still land (a cancel,
- *   a timeout, a dropped connection, or DynamoDB answering that an earlier
- *   attempt under this same token is still being processed): nothing is
- *   confirmed either way, so this is `'unverified'` rather than `'not-landed'`,
- *   and the outcome reports a commit and keeps the upload.
+ * - the row does not hold this item's group but still fits this attempt — still
+ *   holding exactly the state the attempt was pinned to (for a `#rev = :rev`
+ *   pin, an absent row has moved on, so it does not fit), or this attempt was
+ *   never pinned at all (the unconditional overwrite) — and the failure may
+ *   still land: any attempt of its budget got no answer (a cancel, a timeout,
+ *   a dropped connection), or DynamoDB answered that an earlier attempt under
+ *   this same token is still being processed, or with a server error (5xx).
+ *   Nothing is confirmed either way, so this is `'unverified'` rather than
+ *   `'not-landed'`, and the outcome reports a commit and keeps the upload.
+ * - the row still fits this attempt, but the failure was an answer that leaves
+ *   nothing in flight (a refusal, a throttle, a spent budget of such answers):
+ *   the write did not land, so this is `'not-landed'` and the upload is dead.
  * - the read itself fails: nothing is confirmed, so the outcome still reports a
  *   commit and keeps the originating error. That leaks one S3 object at worst
  *   (reclaimed by `ensureS3LifecycleRule`) where the alternative strands a live

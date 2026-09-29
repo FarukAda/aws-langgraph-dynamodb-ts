@@ -39,7 +39,7 @@ the pass is resumable, so a large table can be backfilled in bounded runs.
 
 Defined in: [backfill/backfill.ts:302](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L302)
 
-Rows the scan evaluated.
+Rows the scan returned: those without index keys, since its filter drops every row that has them. Not the rows DynamoDB evaluated, which a filter does not reduce.
 
 ***
 

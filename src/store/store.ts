@@ -6,8 +6,8 @@
  * the five answer and refuse alike. `search` guards the same way but calls
  * its own action directly, to carry a signal that `batch` cannot;
  * `reconcileVectorIndex` and `ensureS3LifecycleRule` guard directly too,
- * since neither is a batchable store operation. Each method declared here is
- * also the error boundary (record 13) — an asynchronous one through
+ * since neither is a batchable store operation. Each public method declared
+ * here is also the error boundary (record 13) — an asynchronous one through
  * `guardPublic`, and the synchronous `destroy`, releasing what the store owns
  * through its shell, through `guardPublicSync`; `stop` is that same guarded
  * call under upstream's lifecycle name. The inherited `start()` no-op —
@@ -349,6 +349,7 @@ export class DynamoDBStore extends BaseStore {
    * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
    * `signal`, or
    * `options.<key>` for a key this package does not read; `ABORTED`;
+   * `RESULT_TRUNCATED` when the walk reaches `maxScanItems` or `maxIterations`;
    * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — a search reads rows it did not name, so one such row anywhere in
    * the prefix it walks reports rather than being passed over; a classified AWS failure.

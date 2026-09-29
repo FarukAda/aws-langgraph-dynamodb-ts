@@ -55,8 +55,10 @@ import { dropVectorWhenGone } from './vector-index';
  * own: with a strongly-consistent read, treating a confirmed absence as a
  * delete that landed. Under a request token that read has little to settle,
  * because every attempt inside one budget re-sends the identical request and a
- * replay is answered from the idempotency cache rather than re-applied; only
- * the last attempt's outcome is in question.
+ * replay is answered from the idempotency cache rather than re-applied. What
+ * stays in question is whether the delete landed at all, and that is a
+ * question about every attempt of the budget, not only its last: an earlier
+ * one can have landed while a later one was answered.
  *
  * `isRowAbsent` reports a read that itself failed as `false` — "not confirmed",
  * never "still there" — so an unknown outcome rethrows and releases nothing.
@@ -302,8 +304,11 @@ export function assertRowFits(record: StoreItemRow): void {
  * `'landed'` cleans up the previous object like the success path and swallows
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
- * one, and so does a read that finds nothing after a write this side cut
- * short, which DynamoDB may still apply. The verification compares the
+ * one. So does a read that finds nothing, or finds another revision, after a
+ * write that DynamoDB may still apply: any attempt of the budget that got no
+ * answer, that DynamoDB answered as still in progress
+ * (`TransactionInProgressException`) or that failed with a server error (5xx).
+ * The verification compares the
  * per-call `rev`, so an inline record is
  * verified too: otherwise a lost acknowledgement of an inline overwrite would be
  * reported as a failure while the previous offloaded object was never cleaned.

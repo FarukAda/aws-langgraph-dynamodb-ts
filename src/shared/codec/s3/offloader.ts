@@ -511,9 +511,10 @@ export interface StoredObject {
  * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * naming the key — for an object over `maxBytes`, for a response with no body,
  * and for any SDK failure that survives the retries. Its message quotes the
- * underlying one with credential shapes redacted; the SDK error is kept as
- * `cause`, so `NoSuchKey` stays distinguishable
- * ({@link isMissingObjectError}). Its context carries the S3 failure's
+ * underlying one with credential shapes redacted; the failure is kept as
+ * `cause` — the SDK error itself for a failure that was not retried, the
+ * `RETRY_EXHAUSTED` error wrapping it once the retry budget is spent — so
+ * `NoSuchKey` stays distinguishable ({@link isMissingObjectError}). Its context carries the S3 failure's
  * `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: an object over the cap is refused from its declared
