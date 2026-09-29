@@ -28,6 +28,8 @@ const section = (t) => log(`\n=== ${t} ===`);
 // True once this run has created the table, so only a table it made is ever
 // deleted, on success or on failure.
 let created = false;
+// True when the table already existed and this run is reusing it.
+let reused = false;
 
 async function ensureTable() {
   section('1. Create real DynamoDB table');
@@ -51,6 +53,7 @@ async function ensureTable() {
     log(`   created table "${TABLE}" in ${REGION}`);
   } catch (error) {
     if (error.name !== 'ResourceInUseException') throw error;
+    reused = true;
     log(`   table "${TABLE}" already exists — reusing`);
   }
 }
@@ -121,12 +124,14 @@ async function run() {
       } catch (error) {
         console.error(`   could not delete table "${TABLE}" — remove it yourself:`, error);
       }
-    } else {
+    } else if (reused) {
       log(`   table "${TABLE}" existed before this demo — left in place`);
+    } else {
+      log(`   this demo created no table "${TABLE}" — nothing to delete`);
     }
     admin.destroy();
   }
-  log('\nDONE —DynamoDBSaver verified end-to-end on real AWS DynamoDB.');
+  log('\nDONE — DynamoDBSaver verified end-to-end on real AWS DynamoDB.');
 }
 
 run().catch((error) => {

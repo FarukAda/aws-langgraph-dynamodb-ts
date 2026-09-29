@@ -1,5 +1,6 @@
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { DynamoDBStore } from '../../../../src/store/store';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -19,7 +20,7 @@ describe('store scans and maxIterations', () => {
       maxIterations: 3,
     });
     await expect(store.listNamespaces()).rejects.toMatchObject({
-      code: 'RESULT_TRUNCATED',
+      code: ErrorCode.RESULT_TRUNCATED,
       context: { field: 'maxIterations' },
     });
     expect(mock.commandCalls(ScanCommand)).toHaveLength(3);
