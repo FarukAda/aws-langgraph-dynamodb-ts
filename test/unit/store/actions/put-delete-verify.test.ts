@@ -54,7 +54,7 @@ function trackingOffloader() {
 }
 
 /**
- * I4: put() re-verified an ambiguous retry-exhausted write via verifyWriteLanded,
+ * `put()` re-verified an ambiguous retry-exhausted write via verifyWriteLanded,
  * but delete() had no equivalent — it just propagated, skipping S3-orphan
  * cleanup and the vector-backend delete even when the row was gone
  * server-side and only the acknowledgement had been lost.

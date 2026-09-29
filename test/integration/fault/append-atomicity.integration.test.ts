@@ -134,7 +134,7 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     const meta = sessions.find((session) => session.sessionId === sessionId);
     // Pre-fix (a bare, non-idempotent UpdateItem retried on the same
     // lost-response path) this could go negative from double-applying the -99
-    // decrement. Since C4 the row this call created is removed outright, so
+    // decrement. A rolled-back append now removes the row it created outright, so
     // "no session, or a session at zero" are both correct outcomes here.
     expect(meta?.messageCount ?? 0).toBe(0);
   });

@@ -126,9 +126,10 @@ describe("store.put never releases a racer's committed object when its own write
  * The timeline of a successful overwrite racing a revert, with every put
  * uploading under its own `rev`:
  *
- * 1. The row holds C1, committed by an earlier put under that put's `rev`. This
- *    call reads it, uploads C2 under its own, and its compare-and-swap commits.
- * 2. A racer then commits C1 again, under the racer's own `rev`, so its row
+ * 1. The row holds content A, committed by an earlier put under that put's
+ *    `rev`. This call reads it, uploads content B under its own, and its
+ *    compare-and-swap commits.
+ * 2. A racer then commits content A again, under the racer's own `rev`, so its row
  *    names an object of its own, not the one the earlier put uploaded.
  * 3. This call releases the payload it superseded without reading the row again.
  *
@@ -136,15 +137,15 @@ describe("store.put never releases a racer's committed object when its own write
  */
 describe('store.put releases the payload a successful overwrite superseded without reading the row again', () => {
   it("releases exactly the superseded object, which the racer's committed row does not name", async () => {
-    const superseded = await rowCommittedBy({ note: 'C1' });
-    const racer = await rowCommittedBy({ note: 'C1' });
+    const superseded = await rowCommittedBy({ note: 'A' });
+    const racer = await rowCommittedBy({ note: 'A' });
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader();
     mock.on(GetCommand).resolves({ Item: { createdAt: 'c', ...superseded } });
     resolveRowWrites(mock);
 
     await expect(
-      putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'C2' } })),
+      putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'B' } })),
     ).resolves.toBeUndefined();
 
     expect(racer.value.s3Key).not.toBe(superseded.value.s3Key);
@@ -163,7 +164,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
       mock.on(GetCommand).resolves(existing);
       resolveRowWrites(mock);
 
-      await putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'C2' } }));
+      await putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'B' } }));
 
       expect(mock.commandCalls(GetCommand)).toHaveLength(1);
       expect(deletedBy(offloader)).toEqual([]);

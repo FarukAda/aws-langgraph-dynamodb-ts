@@ -3,7 +3,7 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import { MIN_ENCODABLE_WRITE_INDEX } from '../../src/checkpointer/internal/rows';
 
 /**
- * M8: an offset is added to every write index before padding so the special
+ * An offset is added to every write index before padding so the special
  * negative slots encode as sortable non-negative integers. That constant
  * hardcodes an assumption about the peer dependency's contents, and it cannot
  * be derived at runtime — deriving it would let a dependency bump silently

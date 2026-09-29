@@ -89,7 +89,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     await built.store.put([id, 'docs'], 'doc-1', { text: 'store content' });
   }
 
-  it('C1: deleteThread leaves the chat history and store data intact', async () => {
+  it('deleteThread leaves the chat history and store data intact', async () => {
     const built = adapters();
     try {
       await seedAll(SHARED_ID, built);
@@ -107,7 +107,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('C1: history.clear leaves the checkpoints and store data intact', async () => {
+  it('history.clear leaves the checkpoints and store data intact', async () => {
     const built = adapters();
     const id = 'conv-2';
     try {
@@ -124,7 +124,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('C2: a store namespace shaped like a checkpoint key cannot reach the checkpoint', async () => {
+  it('a store namespace shaped like a checkpoint key cannot reach the checkpoint', async () => {
     const built = adapters();
     const id = 'conv-3';
     try {
@@ -153,7 +153,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('C2: a store namespace shaped like a session key cannot reach the session', async () => {
+  it('a store namespace shaped like a session key cannot reach the session', async () => {
     const built = adapters();
     const id = 'conv-4';
     try {
@@ -170,7 +170,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('C3: a retried task with a changed write mix loses no write and duplicates none', async () => {
+  it('a retried task with a changed write mix loses no write and duplicates none', async () => {
     const built = adapters();
     const id = 'conv-5';
     const config = { configurable: { thread_id: id, checkpoint_ns: '', checkpoint_id: 'cp-w' } };
@@ -207,7 +207,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('C4: a rolled-back multi-chunk append leaves no ghost session', async () => {
+  it('a rolled-back multi-chunk append leaves no ghost session', async () => {
     const built = adapters();
     const id = 'conv-6';
     try {
@@ -227,7 +227,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('M7: an identifier carrying a control character is rejected, not persisted', async () => {
+  it('an identifier carrying a control character is rejected, not persisted', async () => {
     const built = adapters();
     try {
       await expect(
@@ -244,7 +244,7 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('M9: a range filter does not match a numeric-looking string', async () => {
+  it('a range filter does not match a numeric-looking string', async () => {
     const built = adapters();
     const id = 'conv-7';
     try {

@@ -85,7 +85,7 @@ describe('revertSessionCount', () => {
 });
 
 /**
- * C4: a rolled-back append used to leave the SESSION row behind carrying the
+ * A rolled-back append used to leave the SESSION row behind carrying the
  * `title` derived from the first human message — up to 80 characters of
  * content the caller was told had not persisted, with no API to clear it.
  * `title`/`createdAt`/`sessionId` are written via `if_not_exists`, so nothing

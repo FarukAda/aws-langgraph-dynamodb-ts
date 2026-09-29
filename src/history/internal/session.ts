@@ -375,11 +375,11 @@ function isConditionRejected(error: Error): boolean {
  * row itself could not be deleted because a concurrent append has since added
  * messages to it.
  *
- * Without this, that narrow window reopens exactly the leak C4 closes: the
- * title is derived from the first human message of an append the caller was
- * told had failed, and `if_not_exists` means nothing ever overwrites it — so
- * a row that now belongs to a different caller keeps up to 80 characters of
- * rolled-back message content.
+ * Without this, that narrow window reopens the leak that deleting the row
+ * closes: the title is derived from the first human message of an append the
+ * caller was told had failed, and `if_not_exists` means nothing ever
+ * overwrites it — so a row that now belongs to a different caller keeps up to
+ * 80 characters of rolled-back message content.
  *
  * Both guards are load-bearing. `createdAt = :now` establishes that this call
  * created the row, and `title = :title` that the title on it is still the one

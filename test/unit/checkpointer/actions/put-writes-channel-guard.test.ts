@@ -20,7 +20,7 @@ function conditionalCheckFailed(): Error {
 }
 
 /**
- * C3: a write's sort-key index used to come from its position in the call's
+ * A write's sort-key index used to come from its position in the call's
  * write array, so a retried task whose write mix changed could put a new
  * channel on an index another channel already held. The first-write-wins
  * guard cannot tell a genuine retry from an unrelated write, so the new

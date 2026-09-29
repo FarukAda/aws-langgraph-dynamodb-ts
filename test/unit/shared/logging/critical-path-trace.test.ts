@@ -42,7 +42,7 @@ function notable(
 const serde = JSON_SERDE;
 
 /**
- * I7: replaying the Critical findings against 0.7.0 with a real logger
+ * Replaying the data-loss failures of 0.7.0 with a real logger
  * attached produced *zero* log lines — there was no log statement for these
  * operations at any level, so this was never a "you forgot to configure
  * logging" gap: enabling logging could not surface them without a code

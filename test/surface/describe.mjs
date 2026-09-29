@@ -6,8 +6,8 @@
  * inputs must not render alike. `JSON.stringify` could not promise that: NaN,
  * both infinities and an Invalid Date all became `null`; a `Map`, a `RegExp`
  * and an `Error` all became `{}`; a cycle and a throwing getter fell back to
- * one shared token; a fixed cut left long inputs sharing a prefix; and a C1
- * control character passed through raw, invisible in a terminal or a diff.
+ * one shared token; a fixed cut left long inputs sharing a prefix; and a
+ * C1 control character passed through raw, invisible in a terminal or a diff.
  *
  * So each value renders by kind, with bare tokens (`fn`, `<undef>`, `NaN`) for
  * what JSON cannot express, and a label over {@link MAX_LABEL} keeps a readable
@@ -48,7 +48,7 @@ const hashOf = (text) => createHash('sha256').update(text, 'utf8').digest('hex')
 /**
  * Replace every code unit a reader cannot see — C0 controls, DEL, C1 controls
  * and lone surrogates — with its four-hex-digit escape. `JSON.stringify` covers
- * C0 and lone surrogates inside a string but leaves DEL and C1 raw, and other
+ * C0 and lone surrogates inside a string but leaves DEL and C1 controls raw, and other
  * kinds (a RegExp's source) are not stringified at all. A lone surrogate left
  * raw would also be written to the baseline as U+FFFD, silently changing it.
  */

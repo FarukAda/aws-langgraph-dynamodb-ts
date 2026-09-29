@@ -96,6 +96,26 @@ const AUDIT_ID_PREFIXED =
   /\b(?:SEC|HIST|DDB|CORE|CODEC|STORE|CKPT|TEST|PKG|DOCS|REL|C|H|M|L)-\d{2}[a-z]?\b/;
 
 /**
+ * A test title that opens with a short finding id — `it('C1: …')`,
+ * `describe("M9: …")` — the form the live tier's titles took. It must open a
+ * string literal, so `'S3: uploads'` and prose are left to the patterns below.
+ */
+const TITLE_FINDING_ID = /(['"`])(?:C|H|M|L|I)[1-9]\d?[a-z]?:\s/;
+
+/**
+ * A short finding id cited in comment prose — "the leak C4 closes", "C1/C2:",
+ * "(the I9 collision" — limited to the audit's own severity prefixes, so `S3`,
+ * `EC2` and `UTF-16` never match. The audit numbered from 1, so `C0` does not
+ * match either; Unicode's `C1` control set is left alone where the text names
+ * it as one ("C1 control", "C1 code unit", "C1 (`U+0080`…"), and so is `L2`
+ * after FAISS, the Euclidean distance. Checked only on a line
+ * {@link isCommentLine} accepts, like {@link DESIGN_DECISION}: in code, an id
+ * like this is test data.
+ */
+const PROSE_FINDING_ID =
+  /(?:^|[\s(/])(?!C1\s+(?:controls?|code)\b|C1\s+\(`U\+|(?<=FAISS\s)L2\b)(?:C|H|M|L|I)[1-9]\d?[a-z]?(?=[\s,.;:)/]|$)/;
+
+/**
  * Known limits, left unwidened on purpose:
  *
  * - A reordered "round N fix" is not caught. No plan has ever produced that
@@ -119,7 +139,11 @@ const ALWAYS_CHECKED = [
   UNTRACKED_PLANNING_FILE,
   AUDIT_ID_LIST,
   AUDIT_ID_PREFIXED,
+  TITLE_FINDING_ID,
 ];
+
+/** The patterns checked only on a comment line: in code, each is ordinary data. */
+const COMMENT_ONLY = [DESIGN_DECISION, PROSE_FINDING_ID];
 
 /**
  * True when `line`'s trimmed text opens a comment: `*` (a JSDoc or block
@@ -138,7 +162,7 @@ export function planReferencesIn(source: string, file: string): PlanReferenceHit
   const hits: PlanReferenceHit[] = [];
   const lines = source.split('\n');
   for (const [index, line] of lines.entries()) {
-    const patterns = isCommentLine(line) ? [...ALWAYS_CHECKED, DESIGN_DECISION] : ALWAYS_CHECKED;
+    const patterns = isCommentLine(line) ? [...ALWAYS_CHECKED, ...COMMENT_ONLY] : ALWAYS_CHECKED;
     for (const pattern of patterns) {
       const match = pattern.exec(line);
       if (match !== null) hits.push({ file, line: index + 1, text: match[0] });
@@ -255,12 +279,25 @@ export function handEditedDocFiles(): string[] {
 }
 
 /**
- * Every file this guard's real-tree assertion reads: {@link allScannableFiles}
- * and {@link handEditedDocFiles}, excluding {@link GUARD_OWN_FILES}, the two
- * files that necessarily contain every pattern it looks for.
+ * The hand-edited documents under `docs/`, relative to {@link REPO_ROOT} with
+ * forward slashes: every `.md` file there except the generated API reference
+ * (`docs/api`, rebuilt from the `src` comments this guard already reads) and
+ * local planning notes (`docs/superpowers`, which git ignores).
+ */
+function handEditedDocsTree(): string[] {
+  return listRecursive(resolve(REPO_ROOT, 'docs'), ['.md'])
+    .map((path) => relative(REPO_ROOT, path).split(sep).join('/'))
+    .filter((path) => !path.startsWith('docs/api/') && !path.startsWith('docs/superpowers/'));
+}
+
+/**
+ * Every file this guard's real-tree assertion reads: {@link allScannableFiles},
+ * {@link handEditedDocFiles} and the documents under `docs/`, excluding
+ * {@link GUARD_OWN_FILES}, the two files that necessarily contain every pattern
+ * it looks for.
  */
 export function planReferenceScanFiles(): string[] {
-  return [...allScannableFiles(), ...handEditedDocFiles()].filter(
+  return [...allScannableFiles(), ...handEditedDocFiles(), ...handEditedDocsTree()].filter(
     (path) => !GUARD_OWN_FILES.has(path),
   );
 }

@@ -14,11 +14,12 @@ const NOW = '2026-08-29T00:00:00.000Z';
 const SESSION_ID = parseSessionId('s1');
 
 /**
- * C4 residual: when a rolled-back append cannot delete the session row it
- * created — because a concurrent append has since added messages to it — the
- * count decrement alone still leaves `title`, derived from a message the
- * caller was told had not persisted, on a row that now belongs to someone
- * else. That is the same content leak C4 is about, in a narrower window.
+ * What deleting the row cannot cover: when a rolled-back append cannot delete
+ * the session row it created — because a concurrent append has since added
+ * messages to it — the count decrement alone still leaves `title`, derived
+ * from a message the caller was told had not persisted, on a row that now
+ * belongs to someone else. That is the same content leak deleting the row
+ * closes, in a narrower window.
  */
 describe('removeRolledBackTitle', () => {
   it('removes a title this call contributed to a row it created', async () => {
