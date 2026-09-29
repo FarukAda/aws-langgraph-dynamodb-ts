@@ -52,7 +52,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `indexShards` is documented as fixed for the table's life: the backfill writes keys only to rows that have none and cannot re-shard, raising the count is safe, and lowering it hides rows.
 - The README no longer says leaked objects are "all reclaimed by `ensureS3LifecycleRule()`": that holds only with a `ttl`, and the new orphan sweep finds and, with `--delete`, removes them on a deployment without one — though on a versioned bucket, freeing the storage `--delete` leaves behind as a delete marker still needs a noncurrent-version-expiration and delete-marker-reclaim rule, which only `ttl` gets written automatically. The same claim, and a decision record saying a TTL-less deployment "has no backstop at all", are corrected in the same places in the guide and `docs/decisions/0005`.
 - **The README's "S3 lifecycle rules" section no longer invites a `ttl`-less deployment to copy `ensureS3LifecycleRule()`'s rules verbatim.** Their `Expiration.Days` clause has nothing to correlate with when no row ever expires, so copying it deletes every live payload's current version once it turns that many days old. The section now shows, and the guide and the sweep's own docs now point to, the safe shape for a deployment without a `ttl`: a `NoncurrentVersionExpiration` rule alone, plus the unchanged delete-marker-reclaim rule.
-- **The README and guide now document that turning a `ttl` off does not remove the `Expiration.Days` rule an earlier `ttl`-configured call wrote.** `ensureLifecycleFor` returns early without a `ttl`, so it neither writes nor removes anything; the stale rule keeps expiring every live payload's current version on its old schedule. Both now say how to find and remove it (by its id or its `Filter.Prefix`), and how to replace it with the safe shape if reclaim is still wanted.
+- **The README and guide now document that turning a `ttl` off does not remove the `Expiration.Days` rule an earlier `ttl`-configured call wrote.** `ensureLifecycleFor` returns early without a `ttl`, so it neither writes nor removes anything; the stale rule keeps expiring every live payload's current version on its old schedule. Both now say how to find and remove it (by its id `langgraph-ttl-<slug>` and a `Filter.Prefix` equal to the `keyPrefix`, together — the slug is not injective, and a rule with your prefix may be an operator's), and how to replace it with the safe shape if reclaim is still wanted.
+- **README corrections found by a line-by-line check against the code, AWS's documentation and measurement.** These cover:
+  - The bring-your-own-client samples omitted the socket timeout that bounds a stalled response body.
+  - The retried HTTP statuses are 429/500/502/503/504, not every 5xx.
+  - A missing index is `AWS_REJECTED`, not `NOT_FOUND`.
+  - An S3 failure on a transfer is always `S3_OFFLOAD_FAILED`.
+  - `maxScanItems` counts rows read, not `offset + limit`.
+  - The cancellation signal reaches the SDK on the requests and transfers a call makes for you, not on the verification reads and cleanup that follow a failure.
+  - The factory's `create*` methods build on the factory's own `client` when it was given one.
+  - The `extraKeys` advice named a field no log event carries and missed six that do.
+  - The offload threshold and the inline limit are measured after compression.
+  - A `Buffer` is stored through its `toJSON` under both serializers.
+  - The multi-tenant example id did not match its own IAM condition.
+  - `{"lc":2,"type":"undefined"}` keeps its key.
+  - A descriptor's forward `schemaVersion` is `FORMAT_UNSUPPORTED`, and descriptors carry `writeId`.
+  - The CI claims, the documentation-check file list, the count of decision records and the list of what the live tier covers were wrong.
+- **The orphan sweep's guard is described by its current rule everywhere.** `--delete` refuses when no checked object had evidence of `--table`, and the refusal now also counts the superseded rows it found. The docs no longer say another table "never" names a bucket's keys: a table restored from a point-in-time or backup copy, or seeded from this one, does, and passes the guard, so `--table` must never point at one.
+- **DynamoDB's TTL sweep is documented as AWS documents it.** The JSDoc said deletion lagged "up to 48 hours"; AWS says typically within a few days, with no fixed bound. The lifecycle margin is unchanged.
 
 ## [1.0.0-rc.2] - 2026-09-27
 

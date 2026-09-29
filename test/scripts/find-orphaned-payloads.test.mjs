@@ -77,8 +77,8 @@ function fakeDynamoDB(rows = {}, failing = new Set()) {
 /**
  * One bucket walking every branch: young, live, gone, expired-but-not-yet-gone,
  * superseded, unreadable twice. `live=1` throughout, so this fixture never
- * trips the "--delete refused: not one checked object resolved to a row in
- * --table" guard.
+ * trips the "--delete refused: no checked object had evidence of --table"
+ * guard.
  */
 function fixture() {
   const past = Math.floor(NOW / 1000) - 60;
@@ -478,7 +478,7 @@ test('main without --delete never sends DeleteObjects, and still tells the opera
   assert.ok(lines.some((line) => line.startsWith('Nothing was deleted.')));
 });
 
-test('main refuses --delete when not one checked object resolved to any row in --table, and explains the remedy for a genuinely correct table', async () => {
+test('main refuses --delete when no checked object had evidence of --table, and explains the remedy for a genuinely correct table', async () => {
   const s3 = fakeS3({
     objects: [
       { Key: 'wrong1.bin', LastModified: OLD, Size: 1 },
@@ -507,6 +507,7 @@ test('main refuses --delete when not one checked object resolved to any row in -
         assert.match(error.message, /1 unreadable/);
         assert.match(error.message, /0 expired/);
         assert.match(error.message, /0 live/);
+        assert.match(error.message, /0 superseded/);
         assert.match(error.message, /AWS CLI/);
         return true;
       },
@@ -555,11 +556,10 @@ test('main does not refuse --delete when an expired finding proves --table is ri
 });
 
 /**
- * The reviewer's collision probe: a prod bucket with 3 live objects, swept
- * against a staging table whose only row happens to collide (store keys are
- * deterministic, so this is ordinary, not contrived) with one of them at
- * STORE#config/global. None of round 1's evidence rule's terms may count a
- * row that does not name the checked object's exact key.
+ * Collision: a prod bucket with 3 live objects, swept against a staging table
+ * whose only row happens to collide (store keys are deterministic, so this is
+ * ordinary, not contrived) with one of them at STORE#config/global. No row
+ * that does not name the checked object's exact key may count as evidence.
  */
 function collisionFixture(stagingRow) {
   const s3 = fakeS3({
@@ -578,7 +578,7 @@ function collisionFixture(stagingRow) {
   return { s3, ddb };
 }
 
-test('main refuses --delete when a colliding LIVE row in --table names a different object (the probe\'s "3 of 3" case)', async () => {
+test('main refuses --delete when a colliding LIVE row in --table names a different object (one of three objects collides)', async () => {
   const { s3, ddb } = collisionFixture({
     PK: 'STORE#config',
     SK: 'global',
@@ -601,7 +601,7 @@ test('main refuses --delete when a colliding LIVE row in --table names a differe
   assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
 });
 
-test('main refuses --delete when a colliding LIVE row in --table is inline, not S3 (same "3 of 3" case, a different reason rowNamesKey is false)', async () => {
+test('main refuses --delete when a colliding LIVE row in --table is inline, not S3 (the same collision, a different reason rowNamesKey is false)', async () => {
   const { s3, ddb } = collisionFixture({
     PK: 'STORE#config',
     SK: 'global',
@@ -624,7 +624,7 @@ test('main refuses --delete when a colliding LIVE row in --table is inline, not 
   assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
 });
 
-test('main refuses --delete when a colliding EXPIRED row in --table names a different object (the probe\'s "2 of 3" case)', async () => {
+test('main refuses --delete when a colliding EXPIRED row in --table names a different object (the collision is expired rather than live)', async () => {
   const past = Math.floor(NOW / 1000) - 60;
   const { s3, ddb } = collisionFixture({
     PK: 'STORE#config',

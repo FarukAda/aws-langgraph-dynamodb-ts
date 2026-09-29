@@ -23,9 +23,13 @@ export const MAX_TTL_DAYS = 365 * 5;
 export const MAX_TTL_SECONDS = MAX_TTL_DAYS * 24 * 60 * 60;
 
 /**
- * Extra days an S3 lifecycle rule adds over the TTL it backs. DynamoDB's TTL
- * sweep can lag up to ~48 h past the `ttl` timestamp; the offloaded object
- * must outlive its row, never the other way round.
+ * Extra days an S3 lifecycle rule adds over the TTL it backs, so the offloaded
+ * object outlives its row's expiry, never the other way round. DynamoDB
+ * deletes an expired item typically within a few days of its `ttl`, with no
+ * fixed bound
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html);
+ * the margin does not span that lag, and does not need to, because every read
+ * hides a row past its `ttl`.
  */
 export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
 
@@ -138,9 +142,12 @@ export function calculateTtlTimestamp(ttl: TtlOption, now: () => number = Date.n
  *
  * Guarantees: the object outlives the row that points at it. S3 expires an
  * object at the first midnight UTC at least `Days` after creation, while
- * DynamoDB may keep an expired item for up to 48 hours past its `ttl`
- * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html);
- * the margin covers that lag, which a bare `{ days: N }` did not.
+ * DynamoDB deletes an expired item typically within a few days of its `ttl`,
+ * with no fixed bound
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
+ * The margin keeps the object past the row's expiry, which a bare
+ * `{ days: N }` did not; a row that DynamoDB has not yet deleted is hidden by
+ * every read, so the object going first is never observed.
  */
 export function lifecycleExpirationDays(ttl: TtlOption): number {
   return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY) + S3_LIFECYCLE_SWEEP_MARGIN_DAYS;

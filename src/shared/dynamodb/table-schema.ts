@@ -177,8 +177,9 @@ export function withRowVersion<T extends AttributeMap>(item: T): T & { v: number
  * Throws: nothing.
  *
  * Guarantees: an expired row is absent to every reader even while DynamoDB's
- * own sweep lags, which it may by up to 48 hours
- * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html).
+ * own sweep lags, which AWS documents as typically within a few days of the
+ * `ttl`, with no fixed bound
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
  */
 export function isExpiredRow(row: { ttl?: number }, nowSeconds: number): boolean {
   return row.ttl !== undefined && row.ttl <= nowSeconds;

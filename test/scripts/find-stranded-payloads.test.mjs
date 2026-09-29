@@ -644,7 +644,8 @@ const TTL_KEY = 'langgraph-checkpoints/ttl.bin';
  * payload's backlink points at `row`'s own key, with `row` — and, when given,
  * `metaRow` at its own key — served back by a hand-rolled DynamoDB. Every
  * case below needs only this: one release, one backlink, one candidate row,
- * and, for a checkpoint PAYLOAD or WRITE candidate, its checkpoint's META row.
+ * and, for a checkpoint PAYLOAD candidate, its checkpoint's META row (a WRITE
+ * candidate is always reported and is not gated on one).
  * `refuses` is passed straight through to `fakeDynamo`, for the one test that
  * needs the META lookup itself to fail.
  */

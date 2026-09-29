@@ -42,14 +42,19 @@
  * applies to report-only runs only (see `parseArgs`).
  *
  * As a further guard, `--delete` also refuses to run when there is something
- * to delete but not one checked object found evidence of the right table in
+ * to delete but no checked object had evidence of the right table in
  * `--table` (see `main`): a live row, or an expired row that still names
  * *this exact object*. A row found at a backlinked key that names a
- * *different* object is not evidence — object ids are unique per write, so
- * another table's row never names this bucket's exact key, live or expired,
- * while the right table's rows do; a `--table` that merely collides with one
- * unrelated row at a backlinked key (store keys are deterministic, so this
- * is ordinary — `STORE#<ns0>` / `<ns…>#<key>`) must still be refused. This
+ * *different* object (a superseded row) is not evidence: object ids are
+ * unique per write, so a table written independently of this one never names
+ * this bucket's exact key, live or expired, while the right table's rows do.
+ * A `--table` that merely collides with one unrelated row at a backlinked key
+ * (store keys are deterministic, so this is ordinary — `STORE#<ns0>` /
+ * `<ns…>#<key>`) is therefore refused. A table restored from a point-in-time
+ * or backup copy of this one, or seeded from it, is not independent: its rows
+ * do name these exact keys, so it passes the guard, and every object written
+ * after the copy was taken is then reported as an orphan although its row is
+ * live in the real table. Never point `--table` at such a copy. The guard
  * catches a `--table` or `--prefix` that matches nothing here at all; it
  * does **not** catch a prefix shared with another table's live objects —
  * only an explicit, adapter-scoped `--prefix` does that. It also cannot
@@ -573,8 +578,9 @@ const realDynamoDB = (config) => new DynamoDBClient(config);
  *
  * The findings print immediately after the sweep, before any delete is
  * attempted. With `--delete`, a sweep with something to delete but where not
- * one checked object resolved to any row — live, expired or superseded — in
- * `--table` refuses to delete anything: the signature of a `--table` or
+ * checked object had evidence of `--table` — a live row, or an expired row
+ * that still names that exact object — refuses to delete anything, however
+ * many superseded rows it found: the signature of a `--table` or
  * `--prefix` that does not match these objects (see PRECONDITION in the
  * module header). Otherwise it deletes the orphans found, printing the
  * outcome and throwing (so the process exits non-zero) if any object could
@@ -602,18 +608,22 @@ export async function main(
     }
     // Evidence the table is right: a live row, or an expired row that still
     // names the exact object checked. A `row-names-another-object` orphan is
-    // NOT evidence — object ids are unique per write, so another table's row
-    // never names this bucket's exact key, live or expired, while the right
-    // table's rows do. Counting it let a --table that merely collides with
-    // one unrelated row at a backlinked key (store keys are deterministic,
-    // so this is ordinary) pass the guard and delete every object checked.
+    // NOT evidence — object ids are unique per write, so a table written
+    // independently of this one never names this bucket's exact key, live or
+    // expired, while the right table's rows do. Such a row is what a --table
+    // that merely collides with an unrelated row at a backlinked key (store
+    // keys are deterministic, so this is ordinary) finds.
     const foundAnyRow =
       result.live + result.expired.filter((entry) => entry.namesThisObject).length;
     if (result.orphans.length > 0 && foundAnyRow === 0) {
+      const superseded = result.orphans.filter(
+        (entry) => entry.reason === 'row-names-another-object',
+      ).length;
       throw new Error(
         `refusing --delete: ${result.orphans.length} object(s) would be deleted, but not one of the ` +
-          `${result.checked} checked object(s) resolved to a row in --table (${result.unreadable.length} ` +
-          `unreadable, ${result.expired.length} expired, ${result.live} live). That is the signature of ` +
+          `${result.checked} checked object(s) had evidence of --table (a live row, or an expired row that ` +
+          `still names it): ${result.unreadable.length} unreadable, ${result.expired.length} expired, ` +
+          `${result.live} live, ${superseded} superseded. That is the signature of ` +
           'a wrong --table or --prefix. It can also mean --table is genuinely correct and every one of ' +
           'these really is an orphan (for example, after every thread under this prefix was deleted): if ' +
           'you have confirmed --table and --prefix, delete the keys the ORPHAN lines above name directly, ' +
