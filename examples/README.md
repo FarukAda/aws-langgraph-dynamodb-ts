@@ -53,6 +53,12 @@ Run any script with:
 AWS_REGION=<region> node examples/<script>.mjs
 ```
 
+or through its npm script, which builds the package first:
+
+```bash
+AWS_REGION=<region> npm run example:checkpointer   # or example:persist, example:store, example:agent
+```
+
 ## Cleaning up
 
 `live-checkpointer.mjs` deletes the table at the end, also after a failed run, only when it created it;

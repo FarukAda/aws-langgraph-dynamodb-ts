@@ -79,6 +79,10 @@
     "cpd": "jscpd ./src --threshold 2 --min-lines 3 --reporters console --silent --format typescript,javascript",
     "cpd:full": "jscpd ./src --threshold 2 --min-lines 3 --reporters console-full --format typescript,javascript",
     "cpd:test": "jscpd ./test --threshold 2 --min-lines 3 --reporters console-full --format typescript,javascript",
+    "example:checkpointer": "npm run build && node examples/live-checkpointer.mjs",
+    "example:persist": "npm run build && node examples/live-persist.mjs",
+    "example:store": "npm run build && node examples/live-store.mjs",
+    "example:agent": "npm run build && node examples/live-agent.mjs",
     "pack:check": "node scripts/pack-check.mjs && publint && attw --pack ."
   },
   "dependencies": {

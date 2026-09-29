@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.9.x
+
+No data migration: this release reads a table `0.9.x` wrote as it is. Take a backup before upgrading a live table, and run one version against a table at a time. What code changes, most common first — in full in the README's [upgrade guide](README.md#migrating-from-earlier-versions):
+
+- **Errors are one class, `DynamoDBLangGraphError`** (capital *B*). The subclasses are gone: test with `isDynamoDBLangGraphError(error)`, which accepts what a `catch` binds, and branch on `error.code`. A validation error names its input in `context.field`, a batch or compensation error's counts are under `details`, and a raw AWS SDK error arrives wrapped under its classified code.
+- **Dependencies.** `@langchain/langgraph` is no longer a peer, so depend on it yourself. The floors are `@langchain/core` `^1.2.11`, the optional `@aws-sdk/client-s3` `^3.1132.0` and the AWS SDK dependencies `^3.1132.0`.
+- **Inputs now refused with `VALIDATION`**: an option key an options object this package defines does not read, an identifier over its byte cap or holding a C1 control character, a malformed `ttl` or `s3.keyPrefix`, an injected client whose translation options misread rows, and the store's `indexName` and `indexShards`.
+- **Return shapes.** `history.listSessions()` returns `{ sessions, nextCursor? }`, and `store.batch()` answers a put or a delete with `null`.
+- **`history.addMessages` fails with `COMPENSATION_FAILED`** when it cannot establish a chunk's outcome. Do not retry it; run `reconcileMessageCount`.
+- **A row a newer release wrote raises `FORMAT_UNSUPPORTED`** instead of being skipped.
+- **`ensureS3LifecycleRule()` writes a different rule** — two days past the `ttl`, with noncurrent-version and delete-marker rules — reads `s3:GetBucketVersioning`, and requires a `keyPrefix` ending in `/`.
+- **Packaging.** `import` loads an ES-module build and `require` a CommonJS one; use named imports.
+
 ### Added
 
 - **`maxIterations` on `DynamoDBStore`**: the DynamoDB pages one `search`, `listNamespaces` or `reconcileVectorIndex` reads before `RESULT_TRUNCATED` (default 1000; `Infinity` for none). Those scans were capped at 1000 pages with no way to raise it, which a rootless scan over a large table of mostly non-store rows reached long before `maxScanItems`.
@@ -80,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A descriptor's forward `schemaVersion` is `FORMAT_UNSUPPORTED`, and descriptors carry `writeId`.
   - The CI claims, the documentation-check file list, the count of decision records and the list of what the live tier covers were wrong.
 - **The orphan sweep's guard is described by its current rule everywhere.** `--delete` refuses when no checked object had evidence of `--table`, and the refusal now also counts the superseded rows it found. The docs no longer say another table "never" names a bucket's keys: a table restored from a point-in-time or backup copy, or seeded from this one, does, and passes the guard, so `--table` must never point at one.
-- **Lowering a `ttl` is documented as needing care.** `ensureS3LifecycleRule()` rewrites the rule's `Expiration.Days` to the smaller value, and S3 applies it by age to every object under the prefix, including objects that rows written under the old, longer `ttl` still name, so those rows outlive their payloads. The README's *S3 lifecycle rules* section, its upgrade guide and the guide now say to lower a `ttl` only once rows written under the old value have expired, or to keep the old, longer rule until then by not re-running `ensureS3LifecycleRule()` with the smaller `ttl` yet; raising a `ttl` is safe. The `lifecycleExpirationDays` guarantee and the `ensureS3LifecycleRule()` doc comments say the same. The upgrade guide also no longer calls the lifecycle rule's two extra days cover for DynamoDB's TTL sweep: they are plain headroom.
+- **Lowering a `ttl` is documented as needing care.** `ensureS3LifecycleRule()` rewrites the rule's `Expiration.Days` to the smaller value, and S3 applies it by age to every object under the prefix, including objects that rows written under the old, longer `ttl` still name, so those rows outlive their payloads. The README's *S3 lifecycle rules* section, its upgrade guide and the guide now say to lower the `ttl` at once and re-run `ensureS3LifecycleRule()` only once the old `ttl` has elapsed since, because until then rows written under the old value still name objects the shorter rule would expire; raising a `ttl` is safe at once. The `lifecycleExpirationDays` guarantee and the `ensureS3LifecycleRule()` doc comments say the same. The upgrade guide also no longer calls the lifecycle rule's two extra days cover for DynamoDB's TTL sweep: they are plain headroom.
 - **DynamoDB's TTL sweep is documented as AWS documents it.** The JSDoc said deletion lagged "up to 48 hours"; AWS says typically within a few days, with no fixed bound. The lifecycle margin is unchanged.
 - **Guide, `SECURITY.md` and doc-comment corrections.**
   - A failing partition delete still releases the objects of the rows it deleted.

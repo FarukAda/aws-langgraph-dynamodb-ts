@@ -8,13 +8,15 @@
 
 > **isDynamoDBLangGraphError**(`value`): `value is AnyDynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:191](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L191)
+Defined in: [shared/errors/base-error.ts:202](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L202)
 
 Whether `value` is one of this library's errors.
 
-Accepts: any error, from any realm or any copy of this package — and, since
-the documented place to call this is inside a `catch`, any other value a
-`throw` can produce: `null`, `undefined`, a string, a number, a symbol.
+Accepts: whatever a `catch` clause binds, as it is — an error from any realm
+or any copy of this package, and any other value a `throw` can produce:
+`null`, `undefined`, a string, a number, a symbol. Declared `unknown`
+because that is what `strict` types a `catch` binding, and the documented
+place to call this is the first line inside one.
 
 Returns: whether it carries the brand, narrowed to the union discriminated by
 `code`. A symbol registered by name, not `instanceof`: two copies of this
@@ -34,7 +36,7 @@ failure the caller is reporting with one of its own.
 
 ### value
 
-`Error`
+`unknown`
 
 ## Returns
 

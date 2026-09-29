@@ -67,6 +67,8 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
+The live demos in `examples/` are not a tier: `npm run example:checkpointer`, `example:persist`, `example:store` and `example:agent` build the package and run one against a real AWS account, which bills it ([examples/README.md](examples/README.md)).
+
 CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across nine matrix legs is nine chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. Two ratchets in `test/surface/surface.test.mjs` sit beside the baseline: `EXPECTED_BARE` caps the cases where an error that is not this library's escapes, and `EXPECTED_UPSTREAM` the cases that end in a code reporting a failure outside this library (`RETRY_EXHAUSTED`, `THROTTLED`, `SERVICE_UNAVAILABLE`, `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`, `AWS_REQUEST_FAILED`, `UNEXPECTED_ERROR`). Both may only go down — lower the constant in the commit that fixes a case, never raise it — and `EXPECTED_UPSTREAM` is 0: no case the tier runs ends in one, so none reports a caller's mistake as an AWS failure. One tier runs only on release tags: the real-AWS tier, described below.
 
 ### Real-AWS tests
@@ -100,7 +102,7 @@ Six more workflows run beside it:
 
 ## Toolchain
 
-Two TypeScript versions are installed on purpose: the `typescript` alias resolves to TypeScript 6 and drives ts-jest, ESLint and TypeDoc; `@typescript/native` (TypeScript 7) provides `tsc` and builds `dist` and the shipped declarations. `npm run typecheck` checks `src` with the compiler that emits; `npm run typecheck:all` checks the whole program including tests and configs. Linting is ESLint with Prettier; run `npm run lint:fix` before committing.
+Two TypeScript versions are installed on purpose: the `typescript` alias resolves to TypeScript 6 (`@typescript/typescript6`) and drives ts-jest, ESLint and TypeDoc; `@typescript/native` (TypeScript 7) provides `tsc`, and `npm run build` uses it to emit both trees under `dist` — `dist/esm` for `import` and `dist/cjs` for `require` ([decision record 29](docs/decisions/0029-publish-both-an-es-module-and-a-commonjs-build.md)) — and the shipped declarations. The package smoke checks those declarations with TypeScript 5 and the newest release, the compilers a consumer brings. `npm run typecheck` checks `src` with the compiler that emits; `npm run typecheck:all` checks the whole program including tests and configs. Linting is ESLint with Prettier; run `npm run lint:fix` before committing.
 
 Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS half of the dual build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
 
@@ -134,7 +136,22 @@ Open an issue using [the templates](.github/ISSUE_TEMPLATE); a bug report needs 
 
 ## Releases
 
-Maintainers release from `main`: bump the version, move the `[Unreleased]` entry under the new version, tag `v<version>` and push the tag. The release workflow waits for every check in `scripts/required-checks.json` to succeed on the tagged commit, the live-AWS tier among them, re-runs the gates and packs the tarball in a job that cannot publish, then publishes exactly that tarball with provenance from a job that installs nothing. The GitHub release body is the version's CHANGELOG section, so the heading must read `## [<version>]` before tagging. A prerelease tag publishes under the `next` dist-tag. What each release type may change is defined in the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section.
+Releases are cut by the maintainer from `main`, through a tag-triggered workflow (`.github/workflows/release.yml`) that publishes with npm Trusted Publishing: no manual `npm publish` and no long-lived npm token. What each release type may change is defined in the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section. A prerelease tag (`v1.0.0-rc.3`) publishes under the `next` dist-tag and a plain tag under `latest`.
+
+The workflow is three jobs on purpose. `verify` holds no `id-token`, so nothing it runs — and it runs the whole development toolchain — can mint a registry credential. It refuses a tag whose commit `main` does not already hold, waits until every check named in `scripts/required-checks.json` has succeeded on the tagged commit — the live-AWS tier among them — re-runs the gates, packs the tarball, writes the SBOMs and builds the release body from the CHANGELOG. `publish` runs no third-party code: it attests the tarball and both SBOMs with GitHub's own attestation action, then runs `npm publish` on exactly the tarball `verify` packed, holding no permission beyond `id-token` and `attestations`. `github-release` then creates the GitHub release with the runner's `gh`, attaching the SBOMs and the attestation bundle, holding `contents: write` and no `id-token`.
+
+Two protections live in repository settings rather than in the workflow. The `release-tags` ruleset lets only a repository admin create, move or delete a `v*` tag, since anyone who can push one starts a release. The `npm-publish` environment requires the maintainer's approval and accepts only `v*` tags, and the publish job waits on it: nothing reaches npm until the run is approved. The environment is named on both sides — by the publish job, and by npm's trusted publisher for this package — because naming it adds an `environment` claim to the OIDC token, which npm checks; change or remove it in both places together, or publishing breaks.
+
+One step is deliberately manual: after a stable release, move the `next` dist-tag to it by hand (`npm dist-tag add @farukada/aws-langgraph-dynamodb-ts@<version> next`); the run summary prints the command.
+
+**Cutting a release:**
+
+1. Rename `## [Unreleased]` to `## [<version>] - <date>`, add a fresh empty `[Unreleased]` above it and the compare link below, and check that the "Upgrading from" lead still covers every breaking change in the section. The GitHub release body is this section, so the heading must read `## [<version>]` before tagging.
+2. Check the README's release wording — *Versioning and support* and the maturity row — against what this release is.
+3. Confirm private vulnerability reporting is still enabled, since [`SECURITY.md`](SECURITY.md) sends reports there.
+4. Bump `package.json` and the lockfile **last**, immediately before tagging.
+5. Push, and let CI go green on the exact commit you will tag.
+6. Tag that commit, which must be on `main`, as `v<version>`, and push the tag.
 
 ## Code of conduct
 

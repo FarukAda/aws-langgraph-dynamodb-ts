@@ -377,10 +377,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * same bucket, call them one at a time and run each again after a few
    * minutes once every one of them has run.
    *
-   * Lowering the `ttl` and calling this again shortens the rule for every
-   * object under the prefix, including those that rows written under the old
-   * value still name, so do that only once those rows have expired; raising
-   * the `ttl` is safe.
+   * Lowering the `ttl` is safe for new rows at once; the rule is not. Lower
+   * `ttl` now, and call this again only once the old `ttl` has elapsed since,
+   * because until then rows written under the old value still name objects
+   * the shorter rule would expire. Raising the `ttl` is safe at once.
    */
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic(
