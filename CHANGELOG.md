@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README corrections found by a line-by-line check against the code, AWS's documentation and measurement.** These cover:
   - The bring-your-own-client samples omitted the socket timeout that bounds a stalled response body.
   - The retried HTTP statuses are 429/500/502/503/504, not every 5xx.
-  - A missing index is `AWS_REJECTED`, not `NOT_FOUND`.
+  - A missing index is `AWS_REJECTED`, not `NOT_FOUND`, and `NOT_FOUND`'s doc comment no longer claims a missing index or a missing S3 object on a transfer.
   - An S3 failure on a transfer is always `S3_OFFLOAD_FAILED`.
   - `maxScanItems` counts rows read, not `offset + limit`.
   - The cancellation signal reaches the SDK on the requests and transfers a call makes for you, not on the verification reads and cleanup that follow a failure.
@@ -78,7 +78,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The serde allow-list refusal is uniform only under `JsonPlusSerializer`, and `{"lc":2,"type":"undefined"}` keeps its key.
   - The Lambda sizing advice is per append chunk, and names the store methods that take no signal.
   - The cost table now covers `store.batch`, `getDeltaChannelHistory`, `ensureS3LifecycleRule`, `backfillRecencyIndex` and teardown.
-  - `NOT_FOUND`'s doc comment no longer claims a missing index or a missing S3 object on a transfer.
   - `BackfillResult.scanned` counts the rows the scan returned.
   - The doc comments on the write-settlement rule cover `TransactionInProgressException` and a 5xx, and cite AWS's error-handling guide for a 500 rather than the `TransactWriteItems` reference.
   - `store.search` documents `RESULT_TRUNCATED`; `copyForCaller` and the error boundary document what they copy and stamp.

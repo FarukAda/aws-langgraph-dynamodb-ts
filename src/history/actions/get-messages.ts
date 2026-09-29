@@ -104,8 +104,8 @@ async function decodeMessage(
  * the window `options` selects: `limit` keeps only the newest `limit`
  * messages, `before` only those appended before that instant (see
  * {@link readWindow}). Items past their TTL are filtered out on read
- * (DynamoDB deletes an expired row within a few days, with no fixed bound), so the returned
- * history is never stale. A corrupt item — see
+ * (DynamoDB deletes an expired row within a few days, with no fixed bound),
+ * so the returned history is never stale. A corrupt item — see
  * {@link decodeMessage} for exactly what counts — is handled per
  * `onCorruptMessage`: `'throw'` fails the read with the underlying error;
  * `'skip'` (the default) reports it at `error` with its sort key and returns

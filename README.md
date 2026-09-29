@@ -996,7 +996,7 @@ const logger: Logger = {
 
 | Level | Message | Fields | Meaning and what to do |
 | --- | --- | --- | --- |
-| `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a chunk of an append failed and the rollback failed too (`COMPENSATION_FAILED`): the delete of the chunks that had committed, or, for a single-chunk append, the revert of the session it created; run `reconcileMessageCount` for the session once it is idle |
+| `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a chunk of an append failed and undoing the chunks that had committed failed too (`COMPENSATION_FAILED`) — their delete, or the session-row revert that follows it (the count, or the session itself when this append created it); run `reconcileMessageCount` for the session once it is idle |
 | `error` | `history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted` | `sessionId`, `committedChunks`, `reason` | a chunk's read-back failed, or some attempt of it may still be applied (no answer, `TransactionInProgressException`, or a 5xx) — `reason` names that failure; the other chunks were rolled back, this one's objects were kept, and the call fails with `COMPENSATION_FAILED` (or `ABORTED` on a cancel). Run `reconcileMessageCount` once the session is idle |
 | `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
 | `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned — reclaimed by the lifecycle rule with a `ttl` set, or reported by `scripts/find-orphaned-payloads.mjs` and removed with `--delete` without one |
@@ -1103,7 +1103,7 @@ A write whose first attempt **committed** applies exactly once; a write **reject
 
 ### What a token costs
 
-A one-item transaction costs 2 write units per KB where the plain `PutItem` it replaces cost 1, and on a contended row it also costs about 2.6 requests per logical write once retried transaction conflicts are counted. A [worked example in request units](docs/guide.md#cost-in-request-units-a-worked-example) makes the 2× concrete for a real `saver.put`. Full detail — the measured conflict rates at two, five and twenty concurrent writers: [Guide → What a token costs](docs/guide.md#what-a-token-costs).
+A transaction costs 2 write units per KB where a plain write costs 1, on every write this package sends as a transaction (`saver.put`, every `addMessages` chunk, `store.delete`, and an offloaded `store.put` or `putWrites`), and on a contended row it also costs about 2.6 requests per logical write once retried transaction conflicts are counted. A [worked example in request units](docs/guide.md#cost-in-request-units-a-worked-example) makes the 2× concrete for a real `saver.put`. Full detail — the measured conflict rates at two, five and twenty concurrent writers: [Guide → What a token costs](docs/guide.md#what-a-token-costs).
 
 ### What a partition delete promises
 
