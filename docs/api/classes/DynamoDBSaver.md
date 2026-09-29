@@ -134,7 +134,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:377](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L377)
+Defined in: [checkpointer/saver.ts:382](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L382)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -168,6 +168,11 @@ object-level CRUD the rest of S3 offload needs. Call it once at deployment,
 not per request — and when several adapters or processes provision the
 same bucket, call them one at a time and run each again after a few
 minutes once every one of them has run.
+
+Lowering the `ttl` and calling this again shortens the rule for every
+object under the prefix, including those that rows written under the old
+value still name, so do that only once those rows have expired; raising
+the `ttl` is safe.
 
 ***
 

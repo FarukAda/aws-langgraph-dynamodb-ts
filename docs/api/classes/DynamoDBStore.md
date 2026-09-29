@@ -206,7 +206,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:472](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L472)
+Defined in: [store/store.ts:477](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L477)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -239,6 +239,11 @@ CRUD the rest of S3 offload needs — call it once during provisioning, not
 per request. When several adapters or processes provision the same
 bucket, call them one at a time and run each again after a few minutes
 once every one of them has run.
+
+Lowering the `ttl` and calling this again shortens the rule for every
+object under the prefix, including those that rows written under the old
+value still name, so do that only once those rows have expired; raising
+the `ttl` is safe.
 
 ***
 

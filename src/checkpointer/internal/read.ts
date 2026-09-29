@@ -67,12 +67,12 @@ export interface PendingSendsSource extends ThreadLocation {
  * so that run can be as long as the thread is busy. This is the hottest read
  * the package performs — every graph step begins with it.
  *
- * Without a `ttl` the read asks for one row per page instead. No row at the
- * head can have expired, and DynamoDB applies `Limit` before the filter and
- * bills for what it evaluated: fifty rows of about 500 bytes each would cost
- * about seven strongly consistent read units where one row costs one. A table
- * whose rows were written while a `ttl` was set should keep setting it, or its
- * aged-out head costs one `Query` per row.
+ * Without a `ttl` the read asks for one row per page instead. Such an adapter
+ * writes no row that can expire, and DynamoDB applies `Limit` before the
+ * filter and bills for what it evaluated: fifty rows of about 500 bytes each
+ * would cost about seven strongly consistent read units where one row costs
+ * one. A table whose rows were written while a `ttl` was set should keep
+ * setting it, or its aged-out head costs one `Query` per row.
  */
 const LATEST_META_PAGE_SIZE = 50;
 
@@ -133,8 +133,10 @@ export async function fetchTargetMeta(
     partitionKey(threadId),
     metaSortKeyPrefix(checkpointNs),
     {
-      // Without a ttl no row at the head can have aged out, so the first row
-      // read is the answer and a larger page only bills for rows it discards.
+      // Without a ttl this adapter writes no row that can age out, so the first
+      // row read is normally the answer and a larger page only bills for rows it
+      // discards. Rows written while a ttl was set keep it, and each of those
+      // at the head costs one page here.
       limit: context.ttl === undefined ? 1 : LATEST_META_PAGE_SIZE,
       consistent: true,
     },

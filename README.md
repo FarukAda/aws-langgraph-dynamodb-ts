@@ -1338,7 +1338,7 @@ What your code has to change, most common first:
   - A session row it wrote with an id of 1000 to 1024 bytes, on a table without the index, has a `gsi1sk` over 1024 bytes. DynamoDB's index backfill leaves it out, and `backfillRecencyIndex()` skips it because it already has keys. Until its next `addMessages` rewrites the key, the session is missing from indexed listings and `reconcileMessageCount` on it is refused.
   - A row with a `checkpoint_ns` of 257 to 512 bytes, which `1.0.0` accepts, cannot be read by `rc.2`.
   - `SessionBackend`, the deprecated alias `rc.1` and `rc.2` exported, is removed (`0.9` never exported it): use `MultiSessionHistory`.
-- **`ensureS3LifecycleRule()` writes a different rule.** `0.9` set `Expiration.Days` to the `ttl` in whole days. `1.0.0` sets it to the `ttl` rounded up to whole days plus 2 (headroom for DynamoDB's TTL sweep), so a bucket you re-run it on has its rule rewritten and its objects expire two days or more later than before. It also requires a `keyPrefix` ending in `/`, adds a `NoncurrentVersionExpiration` (one day, or your longer existing value) and a delete-marker reclaim rule, and keeps a longer noncurrent-version retention the bucket already carries. Re-running it after upgrading applies all of this; see [S3 lifecycle rules](#s3-lifecycle-rules).
+- **`ensureS3LifecycleRule()` writes a different rule.** `0.9` set `Expiration.Days` to the `ttl` in whole days. `1.0.0` sets it to the `ttl` rounded up to whole days plus 2 (plain headroom: an object already expires at or after the `ttl` of every row naming it, so DynamoDB's TTL sweep lag does not matter), so a bucket you re-run it on has its rule rewritten and its objects expire two days or more later than before. It also requires a `keyPrefix` ending in `/`, adds a `NoncurrentVersionExpiration` (one day, or your longer existing value) and a delete-marker reclaim rule, and keeps a longer noncurrent-version retention the bucket already carries. Re-running it after upgrading applies all of this; see [S3 lifecycle rules](#s3-lifecycle-rules). If you lower the `ttl` in the same upgrade, re-run it only once the rows written under the old value have expired — the rewritten rule expires by age every object under the prefix, including those older rows still name. Raising the `ttl` is safe.
 - **IAM:**
   - `dynamodb:Scan` is needed only by the table-wide reads (`saver.list()` without a `thread_id`, `history.listSessions()` without `indexName`, a rootless `store.search([])` or `listNamespaces()`, `backfillRecencyIndex()`).
   - `ensureS3LifecycleRule()` also reads `s3:GetBucketVersioning`.
@@ -1596,6 +1596,23 @@ on a bucket **without versioning**: there are no noncurrent versions to keep and
 reclaim, and a release is an ordinary delete with no recovery window at all — `ensureS3LifecycleRule()`
 reports the bucket's versioning state at `warn` rather than enforcing it, because versioning is the
 operator's to enable, not this library's to require.
+
+**Lowering a `ttl` needs care; raising one does not.** The `Expiration.Days` clause expires
+**every** object under the prefix by its age, not only the objects written after the rule was: a
+re-run of `ensureS3LifecycleRule()` with a smaller `ttl` replaces `Days` with the smaller value, and
+S3 then expires, on the new schedule, objects that rows written under the old, longer `ttl` still
+name. Those rows are still live, and a read that needs their payloads fails. So, when you lower a
+`ttl`, either:
+
+- keep the old, longer rule in place — do not re-run `ensureS3LifecycleRule()` with the smaller
+  `ttl` yet — until every row written under the old value has expired, then re-run it; or
+- lower the `ttl` itself only once those rows have expired.
+
+Every such row has expired once the old `ttl` has passed since the last adapter configured with it
+stopped writing. That covers history too: a session keeps the expiry it was created with, so a
+message appended to it after the change still carries an expiry from the old value, and that expiry
+falls within the same window. Raising a `ttl` is safe: the rewritten rule keeps every object at
+least as long as before.
 
 **Without a `ttl`, never write the `Expiration` clause above.** `ensureS3LifecycleRule()` is then a
 no-op — no row ever expires — so that clause has no row's `ttl` to correlate with: it deletes every

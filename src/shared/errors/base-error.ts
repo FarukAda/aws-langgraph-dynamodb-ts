@@ -217,9 +217,10 @@ export function hasErrorCode<C extends ErrorCode>(
  * Sharing the one instance is safe while nothing on the path back to a public
  * method writes to it, but the public boundary does: it stamps
  * `context.operation` and `context.tableName`, each independently when the
- * error does not already carry it, in place, and a second caller reaching the same shared instance through a *different*
- * public method would then find the first caller's operation and table
- * already sitting in its own context, unable to write its own. Giving each
+ * error does not already carry it, in place, and a second caller reaching the
+ * same shared instance through a *different* public method would then find
+ * the first caller's operation and table already sitting in its own context,
+ * unable to write its own. Giving each
  * caller its own instance up front — same `message`, `code`, `context` and
  * `cause` — keeps the two from ever writing to one object. Not a general
  * clone: an *unbranded* failure needs none, since `wrapForeignError`

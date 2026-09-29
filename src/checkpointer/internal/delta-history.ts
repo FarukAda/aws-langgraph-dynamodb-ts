@@ -214,9 +214,13 @@ export interface WalkStop {
  * tell "this checkpoint was never written" apart from "it expired out from
  * under its own descendants".
  *
- * Every other read in this package treats an expired row as absent, which is
- * the right rule for a reader asking for state. Here the distinction is the
- * whole point: one is an ordinary root, the other is data loss.
+ * Every other read in this package hides an expired row, which is the right
+ * rule for a reader asking for state: checkpoint META, store and history rows
+ * by their own ttl, and a checkpoint's PAYLOAD and pending-WRITE rows by their
+ * checkpoint's META row, which is the only one checked (a pre-v4 checkpoint's
+ * migration is the exception: it reads its parent's pending writes under the
+ * child's META row). Here the distinction is the whole point: one is an
+ * ordinary root, the other is data loss.
  *
  * Accepts: `config` — the parent pointer a walk stopped at. `config.signal` —
  * cancels the read, and is read before it is sent. The walk re-attaches the
@@ -235,9 +239,11 @@ export interface WalkStop {
  * longer waiting to be told why the walk ended.
  *
  * Guarantees: the read ignores the ttl, deliberately. Every other read in this
- * package treats an expired row as absent, which is the right rule for a reader
- * asking for state; here the distinction is the whole point, because one answer
- * is an ordinary root and the other is data loss.
+ * package hides an expired row by the rule above — META, store and history rows
+ * by their own ttl, PAYLOAD and WRITE rows by their checkpoint's META row, with
+ * the pre-v4 migration the exception — which is right for a reader asking for
+ * state; here the distinction is the whole point, because one answer is an
+ * ordinary root and the other is data loss.
  */
 export async function probeAncestor(
   context: CheckpointerContext,

@@ -38,10 +38,12 @@ export interface Releasable {
  *
  * The hazard is the one `DynamoDBFactory`'s own `release` names: a teardown
  * written as a sequence of statements stops at the first throw, so everything
- * after it is stranded with no reference left to reach it by. Each adapter's
- * `destroy` was exactly that sequence — the S3 offloader, then the DynamoDB
- * client it built — and an S3 client whose sockets are already gone throws from
- * its own `destroy`, so the DynamoDB client leaked for the life of the process.
+ * after it is stranded with no reference left to reach it by. An adapter's
+ * teardown is such a sequence — the S3 offloader, then the DynamoDB client it
+ * built — and an S3 client whose sockets are already gone throws from its own
+ * `destroy`, which would leave the DynamoDB client open for the life of the
+ * process. Each resource is therefore released whatever the ones before it
+ * threw.
  *
  * Accepts: `resources` — in the order they should be released; an absent one
  * (an adapter with no offloader, a client the caller injected and therefore
