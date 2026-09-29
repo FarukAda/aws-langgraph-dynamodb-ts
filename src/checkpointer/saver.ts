@@ -315,7 +315,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * channel, so a deep thread costs reads only as far back as the nearest
    * snapshot.
    */
-  getDeltaChannelHistory(
+  override getDeltaChannelHistory(
     options: DeltaChannelHistoryOptions,
   ): Promise<Record<string, DeltaChannelHistory>> {
     return guardPublic(

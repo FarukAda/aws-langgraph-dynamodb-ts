@@ -133,7 +133,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * Guarantees: the window bounds what is *read*, never what is written — the
    * session keeps every message appended to it.
    */
-  addMessages(messages: BaseMessage[]): Promise<void> {
+  override addMessages(messages: BaseMessage[]): Promise<void> {
     return guardPublic('session.addMessages', () =>
       this.backend.addMessages(this.sessionId, messages),
     );
@@ -153,7 +153,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * `BaseListChatMessageHistory` declares `clear()`, and a chain that calls it
    * is asking for exactly that.
    */
-  clear(): Promise<void> {
+  override clear(): Promise<void> {
     return guardPublic('session.clear', () => this.backend.clear(this.sessionId));
   }
 }

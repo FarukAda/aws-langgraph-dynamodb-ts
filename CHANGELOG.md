@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The `S3ClientLike` and `S3CommandLike` types are no longer exported.** No public option or method takes either: they typed an internal test hook, which the published declarations never include, so the only thing a caller could do with them was name them. The S3 client is configured through `s3.clientConfig`, typed `S3ClientConfigLike`, which stays exported with `S3ClientOptions`, `S3ClientOption` and `S3RegionLike`.
 - **`SessionBackend`**, the deprecated alias of `MultiSessionHistory`. It existed only in `1.0.0-rc.1` and `1.0.0-rc.2` — `0.9.0` never exported it — so it is removed before `1.0.0` rather than carried as a deprecated name through the first stable major. Use `MultiSessionHistory`.
 
 ### Fixed
