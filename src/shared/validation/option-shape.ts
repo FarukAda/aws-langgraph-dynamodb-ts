@@ -28,7 +28,7 @@ import { validationError } from '../errors/errors';
 export function allKeysOf<T extends object>(keys: {
   [K in keyof Required<T>]: K;
 }): readonly string[] {
-  return Object.values(keys);
+  return Object.keys(keys);
 }
 
 /**

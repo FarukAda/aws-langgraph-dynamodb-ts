@@ -100,8 +100,12 @@ describe('the actual source tree', () => {
 
   it('lists parser modules that exist, and eslint.config.ts allows exactly those', () => {
     const config = readFileSync(resolve(SRC_ROOT, '..', 'eslint.config.ts'), 'utf8');
-    /** A directory is required, which leaves out the entry-point block's `'src/index.ts'`. */
-    const listed = [...config.matchAll(/'src\/([^']+\/[^']+)'/g)].map((match) => match[1]).sort();
+    /**
+     * A directory is required, which leaves out the entry-point block's
+     * `'src/index.ts'`, and a glob names no module, which leaves out the
+     * `'src/**\/*.ts'` of the block that holds all of `src` to the unsafe rules.
+     */
+    const listed = [...config.matchAll(/'src\/([^'*]+\/[^'*]+)'/g)].map((match) => match[1]).sort();
     expect(listed).toEqual([...PARSER_MODULES].sort());
     for (const module of PARSER_MODULES) expect(existsSync(resolve(SRC_ROOT, module))).toBe(true);
   });

@@ -139,7 +139,7 @@ export const JSON_SERDE: SerializerProtocol = {
     }
     try {
       // Same reasoning as `dumpsTyped`'s final return: see its comment.
-      return Promise.resolve(JSON.parse(text));
+      return Promise.resolve(JSON.parse(text) as object | string | number | boolean | null);
     } catch (error) {
       throw new DynamoDBLangGraphError(
         'the stored payload is not the JSON this serializer wrote, so it cannot be decoded',

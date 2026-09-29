@@ -603,9 +603,8 @@ export function offloadedKey(descriptor: PayloadDescriptor | undefined): string 
  * Throws: nothing.
  */
 export function identityOf(probe: RowProbe, row: AttributeMap | undefined): string | undefined {
-  const stored = row?.[probe.attribute];
-  if (probe.kind === 'attribute') return stored as string | undefined;
-  return offloadedKey(stored as PayloadDescriptor | undefined);
+  if (probe.kind === 'attribute') return row?.[probe.attribute] as string | undefined;
+  return offloadedKey(row?.[probe.attribute] as PayloadDescriptor | undefined);
 }
 
 /**

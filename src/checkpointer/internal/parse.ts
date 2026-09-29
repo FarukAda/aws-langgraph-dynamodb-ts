@@ -442,7 +442,7 @@ export interface ListScope {
 function beforeCheckpointId(before: RunnableConfig | undefined): CheckpointId | undefined {
   if (before === undefined) return undefined;
   assertObjectShape(before, 'before');
-  const checkpointId = before.configurable?.checkpoint_id;
+  const checkpointId = (before.configurable as CheckpointConfigurable | undefined)?.checkpoint_id;
   if (isAbsentId(checkpointId)) return undefined;
   return parseCheckpointId(checkpointId, 'before');
 }

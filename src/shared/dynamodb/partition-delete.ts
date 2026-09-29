@@ -154,7 +154,7 @@ function pinFor(
   named: readonly NamedDescriptor[],
 ): RevisionGuard | undefined {
   if (idAttribute !== undefined) {
-    const observed = row[idAttribute];
+    const observed = row[idAttribute] as string | undefined;
     if (typeof observed === 'string') return writeIdGuard(idAttribute, observed);
   }
   for (const entry of named) {

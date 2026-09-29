@@ -279,7 +279,7 @@ export async function loadPayloadValue<T>(
   deps: CodecDeps,
 ): Promise<T> {
   try {
-    return await deps.serde.loadsTyped(serdeType, bytes);
+    return (await deps.serde.loadsTyped(serdeType, bytes)) as T;
   } catch (error) {
     const refusal = toError(error as Error);
     if (isDynamoDBLangGraphError(refusal)) throw refusal;

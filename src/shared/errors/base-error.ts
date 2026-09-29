@@ -97,6 +97,14 @@ export type ErrorDetailsFor<C extends ErrorCode> = C extends keyof ErrorDetailsB
   ? ErrorDetailsByCode[C]
   : undefined;
 
+/** A field of a code's details, as far as copying it is concerned. */
+type DetailField = object | string | number | boolean | null | undefined;
+
+/** Whether a details field is a list, which the copy copies too. */
+function isList(field: DetailField): field is readonly DetailField[] {
+  return Array.isArray(field);
+}
+
 /**
  * A shallow copy of `details` with every array copied too, so a caller reusing
  * its request buffer or failure list cannot rewrite what the error reported.
@@ -105,8 +113,9 @@ export type ErrorDetailsFor<C extends ErrorCode> = C extends keyof ErrorDetailsB
  */
 function copyDetails<D>(details: D): D {
   if (details === null || typeof details !== 'object') return details;
+  const fields = Object.entries(details as Record<string, DetailField>);
   return Object.fromEntries(
-    Object.entries(details).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+    fields.map(([key, value]) => [key, isList(value) ? [...value] : value]),
   ) as D;
 }
 

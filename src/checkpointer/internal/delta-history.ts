@@ -23,6 +23,7 @@ import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
+import type { CheckpointConfigurable } from '../types';
 import { metaRowKey } from './rows';
 import type { CheckpointerContext } from './setup';
 
@@ -249,7 +250,7 @@ export async function probeAncestor(
   context: CheckpointerContext,
   config: RunnableConfig,
 ): Promise<WalkStop | undefined> {
-  const ids = config.configurable;
+  const ids = config.configurable as CheckpointConfigurable | undefined;
   const threadId: string | undefined = ids?.thread_id;
   const checkpointId: string | undefined = ids?.checkpoint_id;
   if (typeof threadId !== 'string' || typeof checkpointId !== 'string') return undefined;

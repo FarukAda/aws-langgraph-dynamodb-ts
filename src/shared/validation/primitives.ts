@@ -216,6 +216,23 @@ export function parseLimit(value: unknown, min: 0 | 1): PageLimit {
 }
 
 /**
+ * One element of an array of strings.
+ *
+ * Accepts: `item` — anything, as the array holds it at `index`, a hole
+ * included.
+ *
+ * Returns: `item`, typed as the string it was checked to be.
+ *
+ * Throws: `VALIDATION` naming `field`, its message identifying `index`.
+ */
+function parseStringElement(item: unknown, field: string, index: number): string {
+  if (typeof item !== 'string') {
+    throw validationError(`${field}[${index}] must be a string`, field);
+  }
+  return item;
+}
+
+/**
  * The value as an array of strings, copied.
  *
  * Accepts: `value` — anything; a non-array is refused, as is an array holding
@@ -237,11 +254,7 @@ export function parseStringArray(value: unknown, field: string): string[] {
   }
   const result: string[] = [];
   for (let index = 0; index < value.length; index += 1) {
-    const item = value[index];
-    if (typeof item !== 'string') {
-      throw validationError(`${field}[${index}] must be a string`, field);
-    }
-    result.push(item);
+    result.push(parseStringElement(value[index], field, index));
   }
   return result;
 }

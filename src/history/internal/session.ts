@@ -502,7 +502,10 @@ function isTextBlock(block: object): block is TextBlock {
  * declares it as `string`, but a multimodal message serializes its
  * `MessageContentComplex[]` blocks verbatim, so an array must be handled too.
  */
-type StoredContent = string | readonly (object | string | number | boolean | null)[];
+type StoredContent = string | readonly StoredBlock[];
+
+/** One entry of a content-block array: a block, or whatever else the array holds. */
+type StoredBlock = object | string | number | boolean | null;
 
 /**
  * The human-readable text of a message's `content`: the string itself, or the
@@ -513,7 +516,7 @@ function textOf(content: StoredContent | undefined): string | undefined {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return undefined;
   const block = content.find(
-    (entry): entry is TextBlock =>
+    (entry: StoredBlock): entry is TextBlock =>
       typeof entry === 'object' && entry !== null && isTextBlock(entry),
   );
   return block?.text;
@@ -591,7 +594,7 @@ async function observeCount(
     retryFor(context, signal),
   );
   if (!result.Item) return { exists: false };
-  const count = result.Item.messageCount;
+  const count = (result.Item as { messageCount?: number }).messageCount;
   return typeof count === 'number' ? { exists: true, count } : { exists: true };
 }
 
