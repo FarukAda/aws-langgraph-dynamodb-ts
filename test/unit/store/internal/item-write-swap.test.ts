@@ -374,50 +374,59 @@ describe('putWithRevisionSwap with the rejected row on the exception', () => {
  * write landed, but the acknowledgement did not — superseded the competitor's
  * object, not the one this call first saw (the competitor already replaced and
  * released that). Releasing the first observation leaked the competitor's
- * object for good: no row names it once this write has landed.
+ * object for good: no row names it once this write has landed. After a second
+ * rejection the pin moves again, so the object released is the last
+ * competitor's, never an earlier one's.
  */
 describe('persistRow after a re-pinned swap whose write landed without an answer', () => {
-  const competitorRow = {
-    rev: { S: 'r2' },
+  /** A competitor's row as the guard rejection carries it, naming its own object. */
+  const competitorRow = (rev: string, s3Key: string) => ({
+    rev: { S: rev },
     createdAt: { S: 'T-1' },
     value: {
       M: {
         location: { S: 'S3' },
         serdeType: { S: 'json' },
         compressed: { BOOL: false },
-        s3Key: { S: 'theirs' },
+        s3Key: { S: s3Key },
       },
     },
-  };
-
-  it('releases the object the landed write replaced: the one its re-pin observed', async () => {
-    let writes = 0;
-    const deleteBatch = jest.fn().mockResolvedValue([]);
-    const context = {
-      tableName: 'store',
-      logger: SILENT_LOGGER,
-      offloader: { deleteBatch, ownsKey: () => true },
-      client: {
-        transactWrite: () => {
-          writes += 1;
-          if (writes === 1) throw cancelledGuard(competitorRow);
-          throw retryExhaustedError('Operation failed after 5 attempts', 5, new Error('timeout'));
-        },
-        get: () => ({ Item: { rev: 'mine' } }),
-      },
-    };
-
-    await persistRow(context as never, record(), {
-      exists: true,
-      revision: 'r0',
-      value: descriptor('old'),
-      createdAt: 'T0',
-    });
-
-    expect(writes).toBe(2);
-    expect(deleteBatch).toHaveBeenCalledTimes(1);
-    expect(deleteBatch).toHaveBeenCalledWith(['theirs']);
   });
+
+  it.each([
+    ['once', [competitorRow('r2', 'theirs')], 'theirs'],
+    ['twice', [competitorRow('r2', 'theirs'), competitorRow('r3', 'latest')], 'latest'],
+  ])(
+    'releases the object the landed write replaced after being turned away %s',
+    async (_label, rejections, replaced) => {
+      let writes = 0;
+      const deleteBatch = jest.fn().mockResolvedValue([]);
+      const context = {
+        tableName: 'store',
+        logger: SILENT_LOGGER,
+        offloader: { deleteBatch, ownsKey: () => true },
+        client: {
+          transactWrite: () => {
+            writes += 1;
+            if (writes <= rejections.length) throw cancelledGuard(rejections[writes - 1]);
+            throw retryExhaustedError('Operation failed after 5 attempts', 5, new Error('timeout'));
+          },
+          get: () => ({ Item: { rev: 'mine' } }),
+        },
+      };
+
+      await persistRow(context as never, record(), {
+        exists: true,
+        revision: 'r0',
+        value: descriptor('old'),
+        createdAt: 'T0',
+      });
+
+      expect(writes).toBe(rejections.length + 1);
+      expect(deleteBatch).toHaveBeenCalledTimes(1);
+      expect(deleteBatch).toHaveBeenCalledWith([replaced]);
+    },
+  );
 });
 
 describe('createdAt after a delete/put race', () => {

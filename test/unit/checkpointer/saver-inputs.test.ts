@@ -104,6 +104,17 @@ describe('getDeltaChannelHistory input validation', () => {
     ).resolves.toEqual({});
   });
 
+  it('still refuses a malformed key it reads, beside one it does not', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't' } },
+        channels: 'c',
+        foo: 1,
+      } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'channels' } });
+  });
+
   /**
    * `channels: []` is deliberate here, not `['c']`: `deltaChannelHistory`
    * returns early for an empty channel list without ever calling `getTuple`,
