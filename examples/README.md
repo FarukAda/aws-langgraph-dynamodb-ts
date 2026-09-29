@@ -36,7 +36,7 @@ you run them in also need access to the Bedrock models they use.
 
 | Script | What it shows | AWS services | Leaves resources? | Clean up |
 |---|---|---|---|---|
-| `live-checkpointer.mjs` | Two independent `DynamoDBSaver` instances sharing state through one DynamoDB table: the second resumes what the first wrote, plus `getState`, full checkpoint history, time-travel to an older checkpoint by id, and `deleteThread` | DynamoDB | No — deletes the table it created when it finishes; a table that already existed is left in place | Nothing to do |
+| `live-checkpointer.mjs` | Two independent `DynamoDBSaver` instances sharing state through one DynamoDB table: the second resumes what the first wrote, plus `getState`, full checkpoint history, time-travel to an older checkpoint by id, and `deleteThread` | DynamoDB | No — deletes the table it created when it finishes, also when the run fails; a table that already existed is left in place | Only if the delete itself fails: the script says so, and `aws dynamodb delete-table --table-name langgraph-saver-demo --region "$AWS_REGION"` removes it |
 | `live-persist.mjs` | The same `DynamoDBSaver` persistence across two turns, left in place to inspect in the console | DynamoDB | Yes — table `langgraph-saver-demo` (or `$LANGGRAPH_DEMO_TABLE`) | `aws dynamodb delete-table --table-name langgraph-saver-demo --region "$AWS_REGION"` |
 | `live-store.mjs` | `DynamoDBStore` semantic search: stores three items with Titan embeddings (`amazon.titan-embed-text-v2:0` via `BedrockEmbeddings`), then searches by meaning and prints the ranked scores | DynamoDB, Bedrock (embeddings) | Yes — table `langgraph-store-demo` (or `$LANGGRAPH_DEMO_TABLE`) | `aws dynamodb delete-table --table-name langgraph-store-demo --region "$AWS_REGION"` |
 | `live-agent.mjs` | A real LangChain agent (`createAgent` with `ChatBedrockConverse`) whose only memory is `DynamoDBSaver`: session 1 tells it a fact, then a brand-new agent and saver in session 2 recall it, so a correct answer can only have come from DynamoDB | DynamoDB, Bedrock (chat model) | Yes — table `langgraph-saver-demo` (or `$LANGGRAPH_DEMO_TABLE`) | `aws dynamodb delete-table --table-name langgraph-saver-demo --region "$AWS_REGION"` |
@@ -55,10 +55,10 @@ AWS_REGION=<region> node examples/<script>.mjs
 
 ## Cleaning up
 
-`live-checkpointer.mjs` deletes the table at the end only when it created it; a
-table named through `LANGGRAPH_DEMO_TABLE` that already existed is left in
+`live-checkpointer.mjs` deletes the table at the end, also after a failed run, only when it created it;
+a table named through `LANGGRAPH_DEMO_TABLE` that already existed is left in
 place, so it is yours to keep or remove. Otherwise there is nothing to clean up
-afterwards. The other three leave their table in place so
+afterwards, unless the delete itself failed, in which case the script says so. The other three leave their table in place so
 you can inspect it in the DynamoDB console, and each names the command to
 remove it in a comment at the top of its own file. Those commands, gathered
 here:
