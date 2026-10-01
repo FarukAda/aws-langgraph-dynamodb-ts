@@ -228,6 +228,53 @@ describe('a compiled LangGraph graph over DynamoDBSaver', () => {
     expect(done.values.steps).toEqual(['flaky']);
   });
 
+  /**
+   * V-26 as a graph meets it. LangGraph writes a state key, and the node a
+   * step hands over to, as a pending-write channel, and the nodes on the path
+   * to a subgraph into its `checkpoint_ns` — so the identifier rules reach the
+   * graph's own names, and the run is refused at its first step rather than
+   * stored under a key that cannot be split back into its segments.
+   */
+  it('refuses a graph whose state key or node name holds the reserved "#"', async () => {
+    const Keyed = Annotation.Root({
+      'issue#': Annotation<number>({ reducer: (_left, right) => right, default: () => 0 }),
+    });
+    const keyed = new StateGraph(Keyed)
+      .addNode('step', () => ({ 'issue#': 1 }))
+      .addEdge(START, 'step')
+      .addEdge('step', END)
+      .compile({ checkpointer: saver });
+    await expect(keyed.invoke({}, thread('hash-state-key-1'))).rejects.toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'channel', operation: 'saver.putWrites' },
+    });
+
+    const named = new StateGraph(State)
+      .addNode('step#1', () => ({ steps: ['step'] }))
+      .addEdge(START, 'step#1')
+      .addEdge('step#1', END)
+      .compile({ checkpointer: saver });
+    await expect(named.invoke({ steps: [] }, thread('hash-node-name-1'))).rejects.toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'channel', operation: 'saver.putWrites' },
+    });
+
+    const child = new StateGraph(State)
+      .addNode('inner', () => ({ steps: ['inner'] }))
+      .addEdge(START, 'inner')
+      .addEdge('inner', END)
+      .compile();
+    const parent = new StateGraph(State)
+      .addNode('child#1', child)
+      .addEdge(START, 'child#1')
+      .addEdge('child#1', END)
+      .compile({ checkpointer: saver });
+    await expect(parent.invoke({ steps: [] }, thread('hash-subgraph-1'))).rejects.toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'checkpoint_ns' },
+    });
+  });
+
   it('aggregates a Send fan-out of thirty branches', async () => {
     const FAN_OUT = 30;
     const graph = new StateGraph(State)

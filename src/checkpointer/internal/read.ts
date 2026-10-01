@@ -28,6 +28,7 @@ import {
   withoutExpired,
   assertReadableRow,
 } from '../../shared/dynamodb/table-schema.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
 import type { ThreadAddress } from './parse.js';
 import {
   beginsWithQuery,
@@ -37,7 +38,9 @@ import {
   type CheckpointWriteRow,
   metaRowKey,
   metaSortKeyPrefix,
+  type MetaReader,
   parseHeadRow,
+  parseWriteRow,
   partitionKey,
   payloadRowKey,
   readCheckpoint,
@@ -89,6 +92,8 @@ export interface ReadOptions {
  *
  * Accepts: `address` — parsed; its `checkpointId` names the row, and its
  * absence asks for the newest in the namespace. `signal` — aborts the read.
+ * `reader` — the public method this read serves, named when a foreign row is
+ * reported; `getTuple` unless the caller says otherwise.
  *
  * Returns: the row, or undefined when there is none — including when every row
  * in the namespace has expired, or when the only rows there belong to another
@@ -108,6 +113,7 @@ export async function fetchTargetMeta(
   context: CheckpointerContext,
   address: ThreadAddress,
   signal?: AbortSignal,
+  reader: MetaReader = 'getTuple',
 ): Promise<CheckpointMetaRow | undefined> {
   const { threadId, checkpointNs, checkpointId } = address;
   // Expired rows are absent to every reader, however long DynamoDB's sweep lags.
@@ -125,7 +131,7 @@ export async function fetchTargetMeta(
         ),
       retryFor(context, signal),
     );
-    const meta = parseHeadRow(context, result.Item as AttributeMap | undefined);
+    const meta = parseHeadRow(context, result.Item as AttributeMap | undefined, reader);
     return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
@@ -163,7 +169,7 @@ export async function fetchTargetMeta(
     maxIterations: Number.POSITIVE_INFINITY,
   });
   for await (const raw of rows) {
-    const meta = parseHeadRow(context, raw);
+    const meta = parseHeadRow(context, raw, reader);
     if (meta && !isExpiredRow(meta, now)) return meta;
   }
   return undefined;
@@ -176,8 +182,10 @@ export async function fetchTargetMeta(
  * true; `list` passes false and accepts replica lag, since a listing tolerates
  * what a read-your-writes `getTuple` does not.
  *
- * Returns: the row, or undefined when it is not there — the window the ordered
- * PAYLOAD→META write leaves open, which the caller answers as "no checkpoint".
+ * Returns: the row, or undefined when it is not there — the two rows land in
+ * one transaction, so that is a thread being deleted row by row, or DynamoDB's
+ * expiry sweep reaching the PAYLOAD row before the META row — which the caller
+ * answers as "no checkpoint".
  *
  * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote; whatever the
  * read throws.
@@ -250,11 +258,17 @@ export async function fetchPendingWrites(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    // Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
-    // on every row regardless of format, and a newer format may give the
-    // attribute a different meaning.
-    assertReadableRow(item, 'pending write');
-    items.push(item as CheckpointWriteRow);
+    // Parsed before `dropSupersededWrites` reads `writeGroup`: that dedup runs
+    // on every row it is given, and a row that is not this adapter's — or one
+    // a newer format wrote, which the parser refuses first — must not reach it.
+    const row = parseWriteRow(item);
+    if (row === undefined) {
+      context.logger.warn('getTuple: skipped a row that is not a pending-write item', {
+        sortKey: truncateForLog(item.SK as string),
+      });
+      continue;
+    }
+    items.push(row);
   }
   if (items.length >= LIST_SCAN_WARN_THRESHOLD) {
     context.logger.warn(
@@ -296,9 +310,9 @@ function configFor(threadId: string, checkpointNs: string, checkpointId: string)
  * `options.consistent` — true for `getTuple`, false for `list`.
  *
  * Returns: the tuple, with `parentConfig` set only when the row names a parent;
- * `undefined` when the PAYLOAD row is absent — the window the ordered
- * PAYLOAD→META write leaves open, and the same answer a caller gets for a
- * checkpoint that does not exist.
+ * `undefined` when the PAYLOAD row is absent — a thread mid-delete, or an
+ * expiry sweep that reached the PAYLOAD row first — the same answer a caller
+ * gets for a checkpoint that does not exist.
  *
  * Throws: whatever the reads and decodes throw.
  */

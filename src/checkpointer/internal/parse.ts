@@ -23,6 +23,7 @@ import {
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
+  MAX_WRITE_CHANNEL_BYTES,
 } from '../../shared/dynamodb/table-schema.js';
 import { validationError } from '../../shared/errors/errors.js';
 import { assertSignalLike } from '../../shared/validation/collaborators.js';
@@ -134,14 +135,16 @@ export function parseTaskId(value: unknown): TaskId {
  * Parse a pending write's channel, the trailing segment of its WRITE sort key.
  *
  * Accepts: `value` — anything; LangGraph's own channel names never contain the
- * reserved separator.
+ * reserved separator. The cap is {@link MAX_WRITE_CHANNEL_BYTES}, wider than
+ * the other segments' because a fan-in's channel is named after every source
+ * node; the composed sort key is checked against DynamoDB's cap separately.
  *
  * Returns: `value` as a {@link WriteChannel}.
  *
  * Throws: `VALIDATION` naming `channel`.
  */
 export function parseWriteChannel(value: unknown): WriteChannel {
-  return parseIdentifier(value, KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES) as WriteChannel;
+  return parseIdentifier(value, KEY_SEPARATOR, 'channel', MAX_WRITE_CHANNEL_BYTES) as WriteChannel;
 }
 
 /** The root namespace, which a config that names none addresses. */

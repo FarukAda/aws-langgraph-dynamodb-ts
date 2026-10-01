@@ -27,8 +27,9 @@ import type { CheckpointerContext } from '../internal/setup.js';
  * `config.signal` — cancels the reads; checked before any of them.
  *
  * Returns: the tuple, or undefined for an unknown thread, an unknown
- * checkpoint, a config naming no thread, or a META row whose PAYLOAD row is not
- * there yet — the window the ordered write leaves open.
+ * checkpoint, a config naming no thread, or a META row whose PAYLOAD row is
+ * gone — a thread mid-delete, or an expiry sweep that reached the PAYLOAD row
+ * first; the two are written in one transaction, so no write leaves that gap.
  *
  * Throws: `VALIDATION`, before any read, naming `config`, `configurable` or
  * `signal` for a config of the wrong shape, or `thread_id`, `checkpoint_ns`,

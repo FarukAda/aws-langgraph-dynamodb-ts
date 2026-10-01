@@ -10,11 +10,7 @@
  */
 
 import type { RunnableConfig } from '@langchain/core/runnables';
-import type {
-  ChannelVersions,
-  Checkpoint,
-  CheckpointMetadata,
-} from '@langchain/langgraph-checkpoint';
+import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/codec.js';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
@@ -42,10 +38,10 @@ import type { CheckpointerContext } from '../internal/setup.js';
  * PAYLOAD rows, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
  *
- * **Every channel value the checkpoint carries is stored.** `newVersions` is
- * accepted because `BaseCheckpointSaver.put` declares it
- * (`@langchain/langgraph-checkpoint@1.1.5` `dist/base.d.ts:68`) and is
- * deliberately ignored: narrowing the stored values to the ones it names, and
+ * **Every channel value the checkpoint carries is stored.** The saver's
+ * `put` accepts a `newVersions` argument because `BaseCheckpointSaver.put`
+ * declares it (`@langchain/langgraph-checkpoint@1.1.5` `dist/base.d.ts:68`)
+ * and does not hand it on: narrowing the stored values to the ones it names, and
  * carrying the rest forward from the parent, made a put whose `newVersions` is
  * `{}` write no values at all. LangGraph passes `{}` when forking a checkpoint
  * and when writing an empty-checkpoint update (`@langchain/langgraph@1.4.13`
@@ -98,7 +94,6 @@ export async function putCheckpoint(
   config: RunnableConfig,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
-  _newVersions?: ChannelVersions,
 ): Promise<RunnableConfig> {
   const request = parsePutRequest(config, checkpoint, metadata);
   const { threadId, checkpointNs, checkpointId } = request.address;

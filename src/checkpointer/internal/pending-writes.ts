@@ -147,8 +147,8 @@ async function commitSpecialRow(
 /**
  * Retry a conditional put up to {@link OVERWRITE_CAS_MAX_ATTEMPTS} times,
  * re-reading the row each time a racer's write invalidates the pinned
- * `writeGroup`. Extracted from {@link writeSpecialRow} to keep both
- * functions under the repo's block-nesting limit.
+ * `writeGroup`. Extracted from {@link writeSpecialRow} so the retry loop
+ * reads on its own, apart from the upload and the cleanup around it.
  *
  * A rejection is not proof a competitor won: `withDynamoDBRetry` retries
  * transient errors, so an attempt can commit server-side, its response can be
@@ -352,7 +352,8 @@ export interface VerifiedFailure {
 }
 
 /**
- * The probe that recognises `item`'s own write on its row.
+ * The probe that recognises a write row's own write on its row — a special
+ * channel's row or a regular one, both of which carry a `writeGroup`.
  *
  * Accepts: `item` — the row this call tried to write, carrying its own
  * `writeGroup`.
@@ -363,7 +364,7 @@ export interface VerifiedFailure {
  *
  * Throws: nothing.
  */
-export function specialRowProbe(item: CheckpointWriteRow): RowProbe {
+export function writeRowProbe(item: CheckpointWriteRow): RowProbe {
   return {
     key: rowKeyOf(item),
     kind: 'attribute',
@@ -399,7 +400,7 @@ export async function readSpecialRow(
   context: CheckpointerContext,
   item: CheckpointWriteRow,
 ): Promise<SpecialRowState> {
-  return stateOf(await readRow(context, specialRowProbe(item)));
+  return stateOf(await readRow(context, writeRowProbe(item)));
 }
 
 /**
@@ -461,7 +462,7 @@ export async function verifyAfterFailure(
   error: Error,
   pinned = true,
 ): Promise<VerifiedFailure> {
-  const probe = specialRowProbe(item);
+  const probe = writeRowProbe(item);
   const rejected = isConditionalCheckFailed(error) ? rejectedRow(error) : undefined;
   const read = rejected
     ? { verdict: verdictFor(probe, rejected), row: rejected }
@@ -671,7 +672,7 @@ async function verifyFailure(
   item: CheckpointWriteRow,
 ): Promise<VerifiedWrite> {
   if (!context.offloader) return { verdict: 'not-landed' };
-  return verifyRow(context, specialRowProbe(item));
+  return verifyRow(context, writeRowProbe(item));
 }
 
 /**

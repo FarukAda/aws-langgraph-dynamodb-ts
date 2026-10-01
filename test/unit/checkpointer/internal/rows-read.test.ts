@@ -5,6 +5,7 @@ import {
   dropSupersededWrites,
   parseHeadRow,
   parseMetaRow,
+  parseWriteRow,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -210,6 +211,39 @@ describe('toPendingWrites offloaded reads', () => {
   });
 });
 
+describe('parseWriteRow', () => {
+  const write = {
+    PK: 'CHKPT#t',
+    SK: 'WRITE##c1#task-1#0000000008#ch',
+    taskId: 'task-1',
+    channel: 'ch',
+    writeGroup: 'g1',
+    index: 0,
+    value: { location: 'INLINE', serdeType: 'json', compressed: false, bytes: new Uint8Array() },
+  };
+
+  it('reads a pending write of this adapter, with or without the fields later releases added', () => {
+    expect(parseWriteRow(write)).toBe(write);
+    expect(parseWriteRow({ ...write, v: 1, occurrence: 2 })).toBeDefined();
+    const { writeGroup: _g, ...beforeGroups } = write;
+    expect(parseWriteRow(beforeGroups)).toBeDefined();
+  });
+
+  it('answers undefined for a row lacking the task id, the channel or a descriptor', () => {
+    const { taskId: _t, ...noTask } = write;
+    const { channel: _c, ...noChannel } = write;
+    expect(parseWriteRow(noTask)).toBeUndefined();
+    expect(parseWriteRow(noChannel)).toBeUndefined();
+    expect(parseWriteRow({ ...write, value: 'not a descriptor' })).toBeUndefined();
+  });
+
+  it('refuses a row a newer release wrote before judging its shape', () => {
+    expect(() => parseWriteRow({ PK: 'CHKPT#t', SK: 'WRITE##c1#x', v: 99 })).toThrow(
+      /format version 99/,
+    );
+  });
+});
+
 describe('parseMetaRow refuses a row from a newer format version', () => {
   const meta = {
     PK: 'CHKPT#t',
@@ -348,13 +382,13 @@ describe('parseHeadRow', () => {
   };
 
   it('returns the item for a real head row', () => {
-    expect(parseHeadRow(ctx(), head)?.checkpointId).toBe('c1');
+    expect(parseHeadRow(ctx(), head, 'getTuple')?.checkpointId).toBe('c1');
   });
 
   /** An absent row is an ordinary answer, not something to warn about. */
   it('answers undefined silently when the read returned nothing', () => {
     const warn = jest.fn();
-    expect(parseHeadRow(ctx(warn), undefined)).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), undefined, 'getTuple')).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -364,7 +398,7 @@ describe('parseHeadRow', () => {
    */
   it('skips a foreign row at the head and reports its sort key', () => {
     const warn = jest.fn();
-    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' }, 'getTuple')).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });

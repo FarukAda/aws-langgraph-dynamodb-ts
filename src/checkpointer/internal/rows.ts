@@ -110,7 +110,7 @@ export interface CheckpointWriteRow {
   writeGroup: string;
   /**
    * How many earlier writes in the same call already used this channel.
-   * Optional: rows written before 0.9.0 carry none and read back as 0, which
+   * Optional: rows written before 0.8.0 carry none and read back as 0, which
    * is exactly the identity they were stored under.
    */
   occurrence?: number;
@@ -537,8 +537,8 @@ const nextPutObjectId = createUlidFactory();
  * uploads. `ttlTimestamp` — stamped on both rows so they expire together.
  *
  * Returns: the META row (light: ids, metadata, index keys) and the PAYLOAD row
- * (heavy: the checkpoint itself), which the caller writes in that order —
- * payload first, so a META row never names a payload that is not there yet.
+ * (heavy: the checkpoint itself), which the caller writes in one transaction,
+ * so a META row never names a payload that is not there.
  *
  * Throws: `VALIDATION` naming `value` for a checkpoint the serializer cannot
  * represent, or `payload` for one too large to store inline without `s3`,
@@ -737,10 +737,47 @@ export function parseMetaRow(raw: AttributeMap): CheckpointMetaRow | undefined {
 }
 
 /**
+ * Parse a row read under a checkpoint's `WRITE#` prefix, answering `undefined`
+ * for one this adapter did not write.
+ *
+ * The prefix is this adapter's own, so a row there that lacks the task id,
+ * the channel or the payload descriptor every write row has carried from the
+ * first release was put there by something else. Handed on as it was, such a
+ * row reached LangGraph as `[undefined, undefined, value]`; parsed here, it is
+ * left out, as a foreign META row is.
+ *
+ * Accepts: `raw` — any row the prefix query returned.
+ *
+ * Returns: the row as a {@link CheckpointWriteRow}, or `undefined` for one
+ * that is not a pending write of this adapter's. `writeGroup`, `occurrence`
+ * and `index` are not judged: a row written before they existed carries
+ * none, and {@link dropSupersededWrites} reads their absence as the identity
+ * it has.
+ *
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote, checked
+ * first, so a newer row is refused rather than judged against attribute
+ * names it may no longer use.
+ */
+export function parseWriteRow(raw: AttributeMap): CheckpointWriteRow | undefined {
+  assertReadableRow(raw, 'pending write');
+  const isWrite =
+    typeof raw.taskId === 'string' &&
+    typeof raw.channel === 'string' &&
+    typeof raw.value === 'object' &&
+    raw.value !== null;
+  return isWrite ? (raw as CheckpointWriteRow) : undefined;
+}
+
+/** The public method a META read serves, named in the line a foreign row is reported on. */
+export type MetaReader = 'getTuple' | 'list';
+
+/**
  * Narrow a candidate head row, saying so when it is not one of ours.
  *
  * Accepts: `raw` — the row a newest-first read returned, or undefined when it
- * returned none.
+ * returned none. `reader` — the public method the read serves, which the
+ * line below names: a `list` that addresses one checkpoint reads it the way
+ * `getTuple` does, and an operator alerting on the message reads the name.
  *
  * Returns: the item, or undefined for an absent or foreign row — logged at
  * `warn` in the second case, because a foreign row at the head of a thread is
@@ -755,11 +792,12 @@ export function parseMetaRow(raw: AttributeMap): CheckpointMetaRow | undefined {
 export function parseHeadRow(
   context: CheckpointerContext,
   raw: AttributeMap | undefined,
+  reader: MetaReader,
 ): CheckpointMetaRow | undefined {
   if (raw === undefined) return undefined;
   const meta = parseMetaRow(raw);
   if (!meta) {
-    context.logger.warn('getTuple: skipped a row that is not a checkpoint meta item', {
+    context.logger.warn(`${reader}: skipped a row that is not a checkpoint meta item`, {
       sortKey: truncateForLog(raw.SK as string),
     });
   }

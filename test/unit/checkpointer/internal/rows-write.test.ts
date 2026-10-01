@@ -12,6 +12,7 @@ import {
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { ROW_FORMAT_VERSION } from '../../../../src/shared/dynamodb/table-schema';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { checkpointItems, writeItems } from '../../../shared/helpers/parsed-inputs';
 
@@ -71,6 +72,30 @@ describe('buildCheckpointRows', () => {
     expect(meta.ttl).toBeUndefined();
     expect(payload.SK).toBe('PAYLOAD##ckpt-1');
     expect(payload.checkpoint.serdeType).toBe('json');
+    // Every row states the format version that wrote it, so a newer release's
+    // row is refused as unsupported rather than misread.
+    expect(meta.v).toBe(ROW_FORMAT_VERSION);
+    expect(payload.v).toBe(ROW_FORMAT_VERSION);
+  });
+
+  /**
+   * The shard is the checkpoint id's hash modulo the configured count — 5 of
+   * the default 8 for this id, 1 of 3 — so a saver configured with a count
+   * other than the default lands its rows where a listing with that count
+   * looks, and `backfillRecencyIndex` given the same count agrees.
+   */
+  it('shards the META row by indexShards, defaulting to 8', async () => {
+    const request = parsePutRequest(
+      { configurable: { thread_id: 'thread-1', checkpoint_ns: '' } },
+      checkpoint,
+      metadata,
+    );
+    const byDefault = await buildCheckpointRows(context(), request);
+    expect(byDefault.meta.gsi1pk).toBe('CHKPT#5');
+    expect(byDefault.meta.gsi1sk).toMatch(/#ckpt-1$/);
+    const byThree = await buildCheckpointRows({ ...context(), indexShards: 3 }, request);
+    expect(byThree.meta.gsi1pk).toBe('CHKPT#1');
+    expect(byDefault.payload).not.toHaveProperty('gsi1pk');
   });
 
   it('sets the ttl attribute when a timestamp is supplied', async () => {
@@ -151,6 +176,7 @@ describe('buildWriteRows', () => {
     expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009#counter');
     expect(items[1].index).toBe(1);
     expect(items[1].value.serdeType).toBe('json');
+    expect(items.map((item) => item.v)).toEqual([ROW_FORMAT_VERSION, ROW_FORMAT_VERSION]);
   });
 
   it('indexes special channels at their fixed WRITES_IDX_MAP slot, ordered before regular writes', async () => {

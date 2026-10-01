@@ -6,6 +6,7 @@ import {
   parseThreadId,
   parseWriteChannel,
 } from '../../../../src/checkpointer/internal/parse';
+import { MAX_WRITE_CHANNEL_BYTES } from '../../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 function expectValidationError(fn: () => void): void {
@@ -74,7 +75,21 @@ describe('parseWriteChannel', () => {
     expect(() => parseWriteChannel('c'.repeat(256))).not.toThrow();
     expectValidationError(() => parseWriteChannel(''));
     expectValidationError(() => parseWriteChannel('a#b'));
-    expectValidationError(() => parseWriteChannel('c'.repeat(257)));
+  });
+
+  /**
+   * LangGraph names the channel behind a static fan-in after every source
+   * node — `join:<a>+<b>+…:<end>` — so a channel is as long as the graph's
+   * names together, where every other segment is one identifier. Nine
+   * sources with ordinary 36-character names pass 256 bytes; the composed
+   * sort key is what bounds a channel, at DynamoDB's own cap.
+   */
+  it('admits a channel as long as the sort key allows, not only one key segment', () => {
+    const joined = `join:${Array.from({ length: 9 }, (_, i) => `research_assistant_stage_${i}_worker`).join('+')}:aggregate_results`;
+    expect(Buffer.byteLength(joined, 'utf8')).toBeGreaterThan(256);
+    expect(() => parseWriteChannel(joined)).not.toThrow();
+    expect(() => parseWriteChannel('c'.repeat(MAX_WRITE_CHANNEL_BYTES))).not.toThrow();
+    expectValidationError(() => parseWriteChannel('c'.repeat(MAX_WRITE_CHANNEL_BYTES + 1)));
   });
 });
 

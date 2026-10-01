@@ -181,7 +181,9 @@ describe('deltaChannelHistory', () => {
       { id: 'c2', parent: { configurable: { thread_id: 't', checkpoint_id: 'c1' } } },
     ]);
 
-    await deltaChannelHistory(context, getTuple, configFor('c2'), ['messages']);
+    await expect(
+      deltaChannelHistory(context, getTuple, configFor('c2'), ['messages']),
+    ).rejects.toMatchObject({ code: ErrorCode.ANCESTOR_EXPIRED });
 
     expect(reads).toEqual(['META##c1']);
   });
@@ -196,21 +198,32 @@ describe('deltaChannelHistory', () => {
     ).rejects.toMatchObject({ code: ErrorCode.ANCESTOR_EXPIRED });
   });
 
-  it('does not throw for an ancestor whose row is stored and not yet expired', async () => {
-    const { context, getTuple } = walkOver([{ id: 'c2', parent: configFor('c1') }], {
-      c1: NOW_SECONDS + 1,
-    });
+  /**
+   * A pointer the saver cannot read is a hole whatever the probe finds: a
+   * live META row without its payload still supplies no value, and ending the
+   * walk quietly there would rebuild the channel from nothing.
+   */
+  it('throws for a parent pointer the saver cannot read even while its META row is stored and live', async () => {
+    const live = walkOver([{ id: 'c2', parent: configFor('c1') }], { c1: NOW_SECONDS + 1 });
+    const unexpiring = walkOver([{ id: 'c2', parent: configFor('c1') }], { c1: null });
 
-    await expect(
-      deltaChannelHistory(context, getTuple, configFor('c2'), ['messages']),
-    ).resolves.toEqual({ messages: { writes: [] } });
+    for (const { context, getTuple } of [live, unexpiring]) {
+      const error = await deltaChannelHistory(context, getTuple, configFor('c2'), [
+        'messages',
+      ]).catch((e: Error) => e);
+      expect(error).toMatchObject({ code: ErrorCode.ANCESTOR_EXPIRED });
+      expect((error as Error).message).toContain('is gone');
+    }
   });
 
-  it('does not throw for a stored ancestor that carries no ttl at all', async () => {
-    const { context, getTuple } = walkOver([{ id: 'c2', parent: configFor('c1') }], { c1: null });
+  it('throws for a parent pointer whose row is gone, naming it', async () => {
+    const { context, getTuple } = walkOver([{ id: 'c2', parent: configFor('c1') }]);
 
     await expect(
       deltaChannelHistory(context, getTuple, configFor('c2'), ['messages']),
-    ).resolves.toEqual({ messages: { writes: [] } });
+    ).rejects.toMatchObject({
+      code: ErrorCode.ANCESTOR_EXPIRED,
+      context: { threadId: 't', checkpointId: 'c1' },
+    });
   });
 });

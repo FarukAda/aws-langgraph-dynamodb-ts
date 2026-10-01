@@ -167,4 +167,74 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
 
     await saver.deleteThread(threadId);
   });
+
+  /**
+   * The orders the guide's difference table states (V-31 to V-33) are
+   * DynamoDB's own — one newest-first Query over a thread's `META#` rows, a
+   * Scan in storage order, a Query over a checkpoint's `WRITE#` rows — so
+   * they are pinned against the service, not a mock.
+   */
+  describe('list and pending-write order', () => {
+    const ids = async (listing: AsyncIterable<{ checkpoint: { id: string } }>) => {
+      const seen: string[] = [];
+      for await (const tuple of listing) seen.push(tuple.checkpoint.id);
+      return seen;
+    };
+
+    it("lists a thread's namespaces in descending byte order, a subgraph's before the root's, newest first within each", async () => {
+      const threadId = 'thread-ns-order';
+      const at = (ns: string) => ({ configurable: { thread_id: threadId, checkpoint_ns: ns } });
+      await saver.put(at(''), checkpoint('r1', 'a'), metadata);
+      await saver.put(at('child:1'), checkpoint('s1', 'b'), metadata);
+      await saver.put(at(''), checkpoint('r2', 'c'), metadata);
+      await saver.put(at('child:1'), checkpoint('s2', 'd'), metadata);
+
+      expect(await ids(saver.list({ configurable: { thread_id: threadId } }))).toEqual([
+        's2',
+        's1',
+        'r2',
+        'r1',
+      ]);
+
+      await saver.deleteThread(threadId);
+    });
+
+    it('lists every thread, through a scan, oldest first within a thread', async () => {
+      const threadId = 'thread-scan-order';
+      const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
+      await saver.put(config, checkpoint('o1', 'a'), metadata);
+      await saver.put(config, checkpoint('o2', 'b'), metadata);
+      await saver.put(config, checkpoint('o3', 'c'), metadata);
+
+      const listed = await ids(saver.list({ configurable: {} }));
+      expect(listed.filter((id) => id.startsWith('o'))).toEqual(['o1', 'o2', 'o3']);
+
+      await saver.deleteThread(threadId);
+    });
+
+    it('returns pending writes by task id, then write index with the special channels first, not in call order', async () => {
+      const threadId = 'thread-write-order';
+      const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
+      await saver.put(config, checkpoint('w1', 'a'), metadata);
+      const at = { configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'w1' } };
+      await saver.putWrites(at, [['b-first', 1]], 'task-b');
+      await saver.putWrites(
+        at,
+        [
+          ['a-second', 2],
+          [ERROR, 'boom'],
+        ],
+        'task-a',
+      );
+
+      const tuple = await saver.getTuple(at);
+      expect(tuple?.pendingWrites?.map(([taskId, channel]) => [taskId, channel])).toEqual([
+        ['task-a', ERROR],
+        ['task-a', 'a-second'],
+        ['task-b', 'b-first'],
+      ]);
+
+      await saver.deleteThread(threadId);
+    });
+  });
 });

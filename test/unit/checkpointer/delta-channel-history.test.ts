@@ -148,13 +148,65 @@ describe('delta-channel history across a TTL boundary', () => {
     expect(history.messages.seed).toEqual(['first']);
   });
 
-  it('ends the walk quietly at a parent that was never written', async () => {
+  /**
+   * DynamoDB removes an expired row within days of its `ttl`, so the ancestor
+   * the walk needs is first readable-but-expired and then gone altogether. A
+   * parent pointer always names a checkpoint that was stored — LangGraph
+   * chains every put after its parent's — so a pointer that finds no row is
+   * that second state, not a thread's true start, and ending the walk quietly
+   * there would rebuild the channel from its initial value with nothing to say
+   * the history was cut.
+   */
+  it('throws ANCESTOR_EXPIRED when a channel still needs an ancestor the sweep has removed', async () => {
     const saver = await saverOver([{ id: 'c2', values: {}, parent: 'gone', expiresIn: HOUR }]);
 
-    const history = await historyOf(saver, 'c2', ['messages']);
+    await expect(historyOf(saver, 'c2', ['messages'])).rejects.toMatchObject({
+      code: ErrorCode.ANCESTOR_EXPIRED,
+      context: { threadId: 't', checkpointId: 'gone' },
+    });
+  });
+
+  it('says whether the ancestor is still stored or already gone', async () => {
+    const expired = await saverOver([
+      { id: 'c1', values: { messages: ['first'] }, expiresIn: -HOUR },
+      { id: 'c2', values: {}, parent: 'c1', expiresIn: HOUR },
+    ]);
+    const swept = await saverOver([{ id: 'c2', values: {}, parent: 'gone', expiresIn: HOUR }]);
+
+    const stillStored = await historyOf(expired, 'c2', ['messages']).catch((e: Error) => e);
+    const removed = await historyOf(swept, 'c2', ['messages']).catch((e: Error) => e);
+
+    expect(stillStored.message).toContain('has expired');
+    expect(removed.message).toContain('is gone');
+  });
+
+  it('ends the walk quietly at a checkpoint with no parent, the true start of a thread', async () => {
+    const saver = await saverOver([{ id: 'c1', values: {}, expiresIn: HOUR }]);
+
+    const history = await historyOf(saver, 'c1', ['messages']);
 
     expect(history.messages.writes).toEqual([]);
     expect(Object.prototype.hasOwnProperty.call(history.messages, 'seed')).toBe(false);
+  });
+
+  /**
+   * LangGraph's exit durability can store a checkpoint whose parent pointer
+   * names itself (a resume that interrupts again before any superstep
+   * completes). The inherited walk, and the reference saver's, follow that
+   * pointer forever; on DynamoDB each lap is a billed read.
+   */
+  it('refuses a chain that revisits a checkpoint instead of walking it forever', async () => {
+    const reads: string[] = [];
+    const saver = await saverOver(
+      [{ id: 'c1', values: {}, parent: 'c1', expiresIn: HOUR }],
+      (sortKey) => reads.push(sortKey),
+    );
+
+    await expect(historyOf(saver, 'c1', ['messages'])).rejects.toMatchObject({
+      code: ErrorCode.ANCESTOR_EXPIRED,
+      context: { threadId: 't', checkpointId: 'c1' },
+    });
+    expect(reads.length).toBeLessThan(12);
   });
 
   it('never reaches an expired ancestor a nearer one has already answered for', async () => {
