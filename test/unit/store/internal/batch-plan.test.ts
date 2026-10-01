@@ -1,48 +1,51 @@
-import { runBatch } from '../../../../src/store/internal/batch-plan';
+import { planBatch, runBatch } from '../../../../src/store/internal/batch-plan';
 import { parseOperation, type ParsedOperation } from '../../../../src/store/internal/parse';
 
-describe('runBatch preserves the order the caller wrote', () => {
-  const ns = ['a'];
-  const put = (key: string, value: number) =>
-    parseOperation({ namespace: ns, key, value: { value } });
-  const del = (key: string) => parseOperation({ namespace: ns, key, value: null });
-  const get = (key: string) => parseOperation({ namespace: ns, key });
-  const search = () => parseOperation({ namespacePrefix: ns, limit: 10, offset: 0 });
+const ns = ['a'];
+const put = (key: string, value: number) =>
+  parseOperation({ namespace: ns, key, value: { value } });
+const del = (key: string) => parseOperation({ namespace: ns, key, value: null });
+const get = (key: string) => parseOperation({ namespace: ns, key });
+const search = () => parseOperation({ namespacePrefix: ns, limit: 10, offset: 0 });
+const list = () =>
+  parseOperation({ matchConditions: [], maxDepth: undefined, limit: 10, offset: 0 });
 
-  /** Records the order operations were dispatched in, and answers a get from a tiny store. */
-  function recorder() {
-    const store = new Map<string, unknown>();
-    const order: string[] = [];
-    /**
-     * `runBatch`'s dispatch parameter is typed `Promise<unknown>`; this fake's
-     * own computation is synchronous and never throws, but it has three
-     * return paths (put/get/search) and only one needs to be thenable to
-     * satisfy `require-await` — the other two are plain values that `async`
-     * itself still wraps in a `Promise`, so they are left as they are.
-     */
-    const dispatch = async (op: ParsedOperation): Promise<unknown> => {
-      if (op.kind === 'put' || op.kind === 'delete') {
-        order.push(`put:${op.address.key}`);
-        if (op.kind === 'delete') store.delete(op.address.key);
-        else store.set(op.address.key, op.value.value);
-        return Promise.resolve(undefined);
-      }
-      if (op.kind === 'get') {
-        order.push(`get:${op.address.key}`);
-        return store.get(op.address.key) ?? null;
-      }
-      order.push('search');
-      return [...store.keys()];
-    };
-    return { store, order, dispatch };
-  }
-
+/** Records the order operations were dispatched in, and answers a read from a tiny store. */
+function recorder() {
+  const store = new Map<string, unknown>();
+  const order: string[] = [];
   /**
-   * Running every write before every read returned the value for a
-   * [delete, get] pair and the new value for a [get, put] pair — the opposite
-   * of what the reference store answers, and reachable through
-   * AsyncBatchedStore, which coalesces one tick into a single batch().
+   * `runBatch`'s dispatch parameter is typed `Promise<unknown>`; this fake's
+   * own computation is synchronous and never throws, but it has several
+   * return paths and only one needs to be thenable to satisfy
+   * `require-await` — the others are plain values that `async` itself still
+   * wraps in a `Promise`, so they are left as they are.
    */
+  const dispatch = async (op: ParsedOperation): Promise<unknown> => {
+    if (op.kind === 'put' || op.kind === 'delete') {
+      order.push(`${op.kind}:${op.address.key}`);
+      if (op.kind === 'delete') store.delete(op.address.key);
+      else store.set(op.address.key, op.value.value);
+      return Promise.resolve(null);
+    }
+    if (op.kind === 'get') {
+      order.push(`get:${op.address.key}`);
+      return store.get(op.address.key) ?? null;
+    }
+    order.push(op.kind);
+    return [...store.keys()];
+  };
+  return { store, order, dispatch };
+}
+
+/**
+ * The reference store answers every read of a batch as the batch found things
+ * and applies the puts afterwards, the last per key winning. `AsyncBatchedStore`
+ * coalesces everything one tick enqueues into a single `batch()`, so two tasks
+ * of one superstep reach this path, and the answers they get must not depend
+ * on which of them was enqueued first.
+ */
+describe('runBatch answers every read before it applies any write, as the reference does', () => {
   /** `AsyncBatchedStore` can flush a tick that enqueued nothing. */
   it('dispatches nothing for an empty batch', async () => {
     const { order, dispatch } = recorder();
@@ -52,57 +55,98 @@ describe('runBatch preserves the order the caller wrote', () => {
     expect(order).toEqual([]);
   });
 
-  it('a get after a delete of the same item sees nothing', async () => {
+  it('a get after a delete of the same item still sees it', async () => {
     const { store, dispatch } = recorder();
     store.set('k', 'present');
     const results = await runBatch([del('k'), get('k')], dispatch);
-    expect(results[1]).toBeNull();
+    expect(results).toEqual([null, 'present']);
+    expect(store.has('k')).toBe(false);
   });
 
-  it('a get before a put of the same item does not see it', async () => {
-    const { dispatch } = recorder();
-    const results = await runBatch([get('k'), put('k', 1)], dispatch);
-    expect(results[0]).toBeNull();
-  });
-
-  it('a get after a put of the same item does see it', async () => {
-    const { dispatch } = recorder();
+  it('a get after a put of the same item does not see it', async () => {
+    const { store, dispatch } = recorder();
     const results = await runBatch([put('k', 1), get('k')], dispatch);
-    expect(results[1]).toBe(1);
+    expect(results).toEqual([null, null]);
+    expect(store.get('k')).toBe(1);
   });
 
-  it('a search sees the writes before it and not the ones after', async () => {
+  it('a search and a listing see none of the writes in their batch, wherever they sit', async () => {
     const { dispatch } = recorder();
-    const results = await runBatch([put('a', 1), search(), put('b', 2)], dispatch);
-    expect(results[1]).toEqual(['a']);
+    const results = await runBatch([put('a', 1), search(), put('b', 2), list()], dispatch);
+    expect(results).toEqual([null, [], null, []]);
   });
 
-  it('runs operations on different items in one pass', async () => {
+  it('sends one write per item, the last one written, and answers the superseded ones null unsent', async () => {
+    const { store, order, dispatch } = recorder();
+    const results = await runBatch(
+      [put('k', 1), put('k', 2), put('j', 1), del('j'), del('m'), put('m', 3)],
+      dispatch,
+    );
+    expect(results).toEqual([null, null, null, null, null, null]);
+    expect(order).toEqual(['put:k', 'delete:j', 'put:m']);
+    expect(store.get('k')).toBe(2);
+    expect(store.has('j')).toBe(false);
+    expect(store.get('m')).toBe(3);
+  });
+
+  it('runs every read in one pass and every write in the next', async () => {
     const { order, dispatch } = recorder();
-    await runBatch([get('x'), get('y'), get('z')], dispatch);
-    expect(order).toHaveLength(3);
+    await runBatch([put('x', 1), get('x'), get('y'), del('z'), search()], dispatch);
+    expect(order).toEqual(['get:x', 'get:y', 'search', 'put:x', 'delete:z']);
+  });
+
+  /**
+   * Within a phase the operations run together, and `AsyncBatchedStore` hands
+   * each caller its result by index: a slower first read must still land in
+   * the first slot.
+   */
+  it('returns the results in operation order whatever order they finish in', async () => {
+    const dispatch = async (op: ParsedOperation): Promise<unknown> => {
+      const key = op.kind === 'get' ? op.address.key : '';
+      const ticks = key === 'slow' ? 3 : 0;
+      for (let tick = 0; tick < ticks; tick += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      return `read ${key}`;
+    };
+    await expect(runBatch([get('slow'), get('fast')], dispatch)).resolves.toEqual([
+      'read slow',
+      'read fast',
+    ]);
   });
 });
 
-/**
- * An operation object carrying both `namespacePrefix` and `value` parses as a
- * search — `parseOperation` tests `namespacePrefix` first, as `dispatch` does
- * — so the planner must schedule it as the broad read it is, not as a write
- * addressing whatever `namespace`/`key` such an object happens to also carry.
- * Before this planner asked `touchOf` the same question `parseOperation` had
- * already answered, it tested `'value' in op` first and planned such an
- * operation as a write instead, so it could run beside an unrelated write in
- * the same segment where a search never may. A search object that also
- * carries `namespace` and `key` was planned as a get on that address, with the
- * same effect. No member of the `Operation` union mixes those keys, but the
- * literals below type-check as an `Operation` all the same — an excess-property
- * check on a union accepts a key any member declares — and a JavaScript caller
- * can pass anything. This is a scheduling change only: what the operation
- * itself does is unchanged.
- */
-describe('the planner schedules a hybrid namespacePrefix+value object as the search it parses to', () => {
-  const ns = ['a'];
+describe('planBatch', () => {
+  it('lists the reads in order and the last write per item in order', () => {
+    const plan = planBatch([put('k', 1), get('k'), put('k', 2), del('j'), search(), put('j', 3)]);
+    expect(plan).toEqual({ reads: [1, 4], writes: [2, 5] });
+  });
 
+  /**
+   * An operation object carrying both `namespacePrefix` and `value` parses as
+   * a search — `parseOperation` tests `namespacePrefix` first, as `dispatch`
+   * does — so the planner must schedule it as the read it is, not as a write
+   * on whatever `namespace`/`key` such an object happens to also carry. No
+   * member of the `Operation` union mixes those keys, but the literals below
+   * type-check as an `Operation` all the same — an excess-property check on a
+   * union accepts a key any member declares — and a JavaScript caller can pass
+   * anything.
+   */
+  it('plans a hybrid namespacePrefix+value object as the search it parses to', () => {
+    const hybrid = parseOperation({
+      namespacePrefix: ns,
+      namespace: ns,
+      key: 'k',
+      value: { x: 1 },
+      limit: 10,
+      offset: 0,
+    });
+    expect(hybrid.kind).toBe('search');
+    expect(planBatch([put('k', 1), hybrid])).toEqual({ reads: [1], writes: [0] });
+  });
+});
+
+describe('the budget one phase shares', () => {
   /** Runs `operations` two at a time and reports the most that ran at once. */
   async function maxConcurrency(operations: ParsedOperation[]): Promise<number> {
     let inFlight = 0;
@@ -118,52 +162,11 @@ describe('the planner schedules a hybrid namespacePrefix+value object as the sea
     return maxInFlight;
   }
 
-  it('plans a search that also carries namespace and key as a broad read, not a get', async () => {
-    const hybrid = parseOperation({
-      namespacePrefix: ns,
-      namespace: ns,
-      key: 'k',
-      limit: 10,
-      offset: 0,
-    });
-    expect(hybrid.kind).toBe('search');
-    const unrelatedPut = parseOperation({ namespace: ns, key: 'other', value: { v: 1 } });
-    expect(await maxConcurrency([unrelatedPut, hybrid])).toBe(1);
+  it('keeps at most the limit in flight within a phase', async () => {
+    expect(await maxConcurrency([get('a'), get('b'), get('c'), get('d')])).toBe(2);
   });
 
-  it('is planned as a broad read, not a write on its (absent) address', () => {
-    const hybrid = parseOperation({
-      namespacePrefix: ns,
-      value: { x: 1 },
-      limit: 10,
-      offset: 0,
-    });
-    expect(hybrid.kind).toBe('search');
-  });
-
-  it('does not run beside an unrelated write, where a shape-based write plan would have let it', async () => {
-    const hybrid = parseOperation({
-      namespacePrefix: ns,
-      value: { x: 1 },
-      limit: 10,
-      offset: 0,
-    });
-    let inFlight = 0;
-    let maxInFlight = 0;
-    const dispatch = async (): Promise<unknown> => {
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((resolve) => setImmediate(resolve));
-      inFlight -= 1;
-      return null;
-    };
-
-    await runBatch(
-      [parseOperation({ namespace: ns, key: 'other', value: { v: 1 } }), hybrid],
-      dispatch,
-      2,
-    );
-
-    expect(maxInFlight).toBe(1);
+  it('never runs a read beside a write', async () => {
+    expect(await maxConcurrency([put('a', 1), search()])).toBe(1);
   });
 });

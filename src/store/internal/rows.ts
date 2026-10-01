@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { Item } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock.js';
 import {
   codecDepsOf,
   decodePayload,
@@ -25,6 +26,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry.js';
 import {
   ADAPTER_TAGS,
   assertReadableRow,
+  isExpiredRow,
   KEY_SEPARATOR,
   PARTITION_KEY_ATTRIBUTE,
   ROW_FORMAT_VERSION,
@@ -244,20 +246,42 @@ export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(para
   };
 }
 
-/** The previous row's createdAt, payload descriptor and revision. */
+/** The previous row's createdAt, expiry, payload descriptor and revision. */
 export interface ExistingRowMeta {
   exists: boolean;
   createdAt?: string;
+  /** The row's expiry stamp in epoch seconds, when it carries one. */
+  ttl?: number;
   value?: DescriptorRef;
   revision?: string;
 }
 
 /**
+ * Whether a row a put is about to replace is an item to its readers.
+ *
+ * A row past its `ttl` is hidden from `get`, from every search and from every
+ * listing until DynamoDB's sweep removes it, which can lag for days; a put over
+ * one is a creation, not an update. The row's revision and descriptor still
+ * count — the swap must pin the row that is physically there and release the
+ * object it names — so this is asked only of what the put inherits.
+ *
+ * Accepts: `existing` — what {@link readExisting} or {@link existingFrom} read.
+ *
+ * Returns: true when there is a row and it has not expired.
+ *
+ * Throws: nothing.
+ */
+export function isLiveRow(existing: ExistingRowMeta): boolean {
+  return existing.exists && !isExpiredRow(existing, nowSeconds());
+}
+
+/**
  * Read the fields a put needs from the row it is about to replace, in one
- * strongly-consistent projection: `createdAt` to preserve, the descriptor's
- * location and S3 key to clean up afterwards (never its inline bytes, which
- * can be hundreds of kilobytes the write would only discard), and the
- * revision the compare-and-swap pins.
+ * strongly-consistent projection: `createdAt` to preserve and the `ttl` that
+ * decides whether it is preserved, the descriptor's location and S3 key to
+ * clean up afterwards (never its inline bytes, which can be hundreds of
+ * kilobytes the write would only discard), and the revision the
+ * compare-and-swap pins.
  *
  * Lives apart from `actions/put.ts` so `item-write.ts` can re-read on a lost swap
  * without importing its own caller.
@@ -282,10 +306,11 @@ export async function readExisting(context: StoreContext, key: RowKey): Promise<
           TableName: context.tableName,
           Key: key,
           ConsistentRead: true,
-          ProjectionExpression: '#c, #r, #v.#loc, #v.#s3k',
+          ProjectionExpression: '#c, #r, #ttl, #v.#loc, #v.#s3k',
           ExpressionAttributeNames: {
             '#c': 'createdAt',
             '#r': REVISION_ATTRIBUTE,
+            '#ttl': 'ttl',
             '#v': 'value',
             '#loc': 'location',
             '#s3k': 's3Key',
@@ -313,6 +338,7 @@ export function existingFrom(item: AttributeMap | undefined): ExistingRowMeta {
   return {
     exists: item !== undefined,
     createdAt: item?.createdAt as string | undefined,
+    ttl: item?.ttl as number | undefined,
     value: item?.value as DescriptorRef | undefined,
     revision: item?.[REVISION_ATTRIBUTE] as string | undefined,
   };

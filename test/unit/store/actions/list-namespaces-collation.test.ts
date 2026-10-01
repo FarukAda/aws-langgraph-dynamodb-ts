@@ -86,3 +86,27 @@ describe('listNamespaces orders namespaces the same way on every host', () => {
     expect(localeCompare).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The reference collates the labels joined with `:`. Joining with another
+ * character changes where a label that holds punctuation sorts — `.`, `@`,
+ * `/` and `!` fall on different sides of `:` and `#` in the collation — so a
+ * namespace such as `['memories', 'jane.doe@example.com']` would land on a
+ * different page here than there.
+ */
+describe('listNamespaces collates the labels as the reference joins them', () => {
+  it('orders a label holding punctuation where the reference does', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [row(['memories', 'jane.doe@example.com']), row(['memories', 'jane', 'facts'])],
+    });
+    const listed = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 10, offset: 0 }),
+    );
+    expect(listed).toEqual([
+      ['memories', 'jane', 'facts'],
+      ['memories', 'jane.doe@example.com'],
+    ]);
+  });
+});

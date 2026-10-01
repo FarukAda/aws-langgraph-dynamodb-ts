@@ -63,6 +63,25 @@ describe('parseNamespacePrefix', () => {
     );
     expect(() => parseNamespacePrefix(['a#b'], 'suffix')).toThrow(refusal('suffix element'));
   });
+
+  /**
+   * Every label can be legal and the path still match nothing: the labels past
+   * the first lead a matching row's sort key, and a sort key holds at most 1024
+   * bytes, key included. Such a path is refused like any other that no stored
+   * namespace could match, rather than answered with a silent empty page — or,
+   * as a search, sent to DynamoDB as a `begins_with` operand longer than any
+   * sort key, after the query was embedded.
+   */
+  it('refuses a path whose labels past the first leave no sort key for any key', () => {
+    const label = 'l'.repeat(256);
+    const widest = ['root', label, label, label, 'l'.repeat(1024 - 3 * 257 - 2)];
+    expect(() => parseNamespacePrefix(widest, 'namespacePrefix')).not.toThrow();
+    const tooWide = [...widest.slice(0, -1), 'l'.repeat(1024 - 3 * 257 - 1)];
+    expect(() => parseNamespacePrefix(tooWide, 'namespacePrefix')).toThrow(
+      refusal('namespacePrefix'),
+    );
+    expect(() => parseNamespacePrefix(tooWide, 'suffix')).toThrow(refusal('suffix'));
+  });
 });
 
 /** `parseStoreAddress`'s key rules, isolated with a throwaway namespace. */

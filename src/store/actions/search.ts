@@ -66,7 +66,8 @@ export async function searchItems(
       { kind: 'page', need: offset + limit },
       signal,
     );
-    return page.map(({ item }) => ({ ...item })).slice(offset, offset + limit);
+    // An unranked item carries an own `score` of `undefined`, as the reference shapes one.
+    return page.map(({ item }) => ({ ...item, score: undefined })).slice(offset, offset + limit);
   }
   const candidates = await collectCandidates(
     context,

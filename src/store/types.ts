@@ -61,7 +61,7 @@ export type DynamoDBStoreOptions = Omit<BaseAdapterOptions, 'indexName' | 'index
      * Cap on rows read into memory by one search, namespace listing or
      * reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
      * truncation: a partial answer is never returned as a complete one.
-     * Defaults to `MAX_TOTAL_ROWS_IN_MEMORY`.
+     * Defaults to 10,000; the ceiling is 1,000,000.
      */
     maxScanItems?: number;
     /**
@@ -108,7 +108,7 @@ export interface ListNamespacesOptions {
    */
   maxDepth?: number;
   /**
-   * How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000);
+   * How many namespaces to return, from 0 to 10,000;
    * default 100. `0` returns an empty array without reading the table.
    */
   limit?: number;

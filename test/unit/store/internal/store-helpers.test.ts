@@ -1,12 +1,38 @@
+import { GetCommand } from '@aws-sdk/lib-dynamodb';
+
+import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { passesFilter } from '../../../../src/store/internal/filter';
 import { parseListOperation } from '../../../../src/store/internal/parse';
-import { projectKeys, scopedQuery, existingFrom } from '../../../../src/store/internal/rows';
+import {
+  existingFrom,
+  isLiveRow,
+  projectKeys,
+  readExisting,
+  scopedQuery,
+} from '../../../../src/store/internal/rows';
 import {
   assertStoreOptions,
   MAX_SCAN_ITEMS,
   MAX_SEARCH_CANDIDATES,
 } from '../../../../src/store/internal/setup';
+import type { StoreContext } from '../../../../src/store/internal/setup';
+import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
+
+function context(client: StoreContext['client']): StoreContext {
+  return {
+    client,
+    tableName: 'store',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    maxSearchCandidates: 1000,
+    maxScanItems: 10000,
+    maxIterations: 1000,
+    vectorScoreDirection: 'relevance',
+  };
+}
 
 describe('projectKeys', () => {
   it('projects a row s identity and version and keeps the input s own attribute names', () => {
@@ -31,9 +57,12 @@ describe('projectKeys', () => {
 
 describe('existingFrom', () => {
   it('reports what the row a put supersedes holds', () => {
-    expect(existingFrom({ createdAt: 'c', rev: 'r1', value: { location: 'INLINE' } })).toEqual({
+    expect(
+      existingFrom({ createdAt: 'c', rev: 'r1', ttl: 1, value: { location: 'INLINE' } }),
+    ).toEqual({
       exists: true,
       createdAt: 'c',
+      ttl: 1,
       revision: 'r1',
       value: { location: 'INLINE' },
     });
@@ -43,6 +72,7 @@ describe('existingFrom', () => {
     expect(existingFrom(undefined)).toEqual({
       exists: false,
       createdAt: undefined,
+      ttl: undefined,
       revision: undefined,
       value: undefined,
     });
@@ -54,6 +84,58 @@ describe('existingFrom', () => {
       exists: true,
       revision: undefined,
     });
+  });
+});
+
+describe('readExisting', () => {
+  /** A consistent, projected read: what a put inherits, pins on and releases, and nothing more. */
+  it('reads the fields a put needs, strongly consistently, and projects them onto ExistingRowMeta', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: { createdAt: 'c', rev: 'r1', ttl: 7, value: { location: 'S3', s3Key: 'k' } },
+    });
+    const existing = await readExisting(context(client), { PK: 'STORE#ns', SK: 'k' });
+    expect(existing).toEqual({
+      exists: true,
+      createdAt: 'c',
+      ttl: 7,
+      revision: 'r1',
+      value: { location: 'S3', s3Key: 'k' },
+    });
+    const input = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(input).toMatchObject({
+      TableName: 'store',
+      Key: { PK: 'STORE#ns', SK: 'k' },
+      ConsistentRead: true,
+      ProjectionExpression: '#c, #r, #ttl, #v.#loc, #v.#s3k',
+    });
+  });
+
+  it('reports no row for an absent one', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    await expect(readExisting(context(client), { PK: 'STORE#ns', SK: 'k' })).resolves.toEqual(
+      existingFrom(undefined),
+    );
+  });
+});
+
+describe('isLiveRow', () => {
+  const nowSeconds = FROZEN_NOW_MS / 1000;
+
+  it('is false for no row', () => {
+    expect(isLiveRow(existingFrom(undefined))).toBe(false);
+  });
+
+  it('is true for a row with no expiry, or one still ahead', () => {
+    expect(isLiveRow(existingFrom({ createdAt: 'c' }))).toBe(true);
+    expect(isLiveRow(existingFrom({ createdAt: 'c', ttl: nowSeconds + 1 }))).toBe(true);
+  });
+
+  /** The expiry instant itself counts as expired, as every reader's filter has it. */
+  it('is false for a row at or past its expiry, however recently', () => {
+    expect(isLiveRow(existingFrom({ createdAt: 'c', ttl: nowSeconds }))).toBe(false);
+    expect(isLiveRow(existingFrom({ createdAt: 'c', ttl: nowSeconds - 86_400 }))).toBe(false);
   });
 });
 

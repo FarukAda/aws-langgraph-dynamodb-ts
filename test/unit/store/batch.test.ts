@@ -26,10 +26,6 @@ function overlappingGet(mock: Mock): () => number {
   return () => max;
 }
 
-const yieldTimes = async (ticks: number): Promise<void> => {
-  for (let i = 0; i < ticks; i++) await new Promise((resolve) => setImmediate(resolve));
-};
-
 describe('DynamoDBStore.batch dispatches independent operations concurrently', () => {
   it('runs reads concurrently, up to 8 at a time, and keeps results in operation order', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -43,25 +39,30 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently', (
     expect(maxInFlight()).toBeLessThanOrEqual(8);
   });
 
-  it('keeps two puts to one key ordered so the later one wins, even when the first is slower', async () => {
+  /** The reference applies only the last put per key; two compare-and-swaps on one item would race for an outcome already decided. */
+  it('sends only the last of two puts to one key', async () => {
     const { client, mock } = createStrictDocumentMock();
     const written: string[] = [];
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).callsFake(async (input) => {
-      const value = new TextDecoder().decode(input.Item.value.bytes as Uint8Array);
-      await yieldTimes(value.includes('first') ? 3 : 0);
-      written.push(value);
+    mock.on(PutCommand).callsFake((input) => {
+      written.push(new TextDecoder().decode(input.Item.value.bytes as Uint8Array));
       return {};
     });
     const store = new DynamoDBStore({ tableName: 'store', client });
-    await store.batch([
+    const results = await store.batch([
       { namespace: ['n'], key: 'k', value: { v: 'first' } },
       { namespace: ['n'], key: 'k', value: { v: 'second' } },
     ]);
-    expect(written).toEqual(['{"v":"first"}', '{"v":"second"}']);
+    expect(written).toEqual(['{"v":"second"}']);
+    expect(results).toEqual([null, null]);
   });
 
-  it('lets a get after a put to the same key observe the put', async () => {
+  /**
+   * As the reference evaluates a batch: every read answers as the batch found
+   * things, and the writes land afterwards. Two tasks of one superstep touching
+   * one item therefore get the same answers whichever was enqueued first.
+   */
+  it('answers a get before the put to the same key in the batch lands', async () => {
     const { client, mock } = createStrictDocumentMock();
     let stored: Record<string, unknown> | undefined;
     mock.on(GetCommand).callsFake((input) => (input.ProjectionExpression ? {} : { Item: stored }));
@@ -74,7 +75,8 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently', (
       { namespace: ['n'], key: 'k', value: { v: 1 } },
       { namespace: ['n'], key: 'k' },
     ]);
-    expect(item?.value).toEqual({ v: 1 });
+    expect(item).toBeNull();
+    expect(stored).toBeDefined();
   });
 
   /** A put and a delete answer `null`, as the reference store's `batch` does. */

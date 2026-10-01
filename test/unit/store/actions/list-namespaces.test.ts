@@ -97,11 +97,42 @@ describe('listNamespaces', () => {
       ['users', 'u1'],
       ['users', 'u2'],
     ]);
-    expect(
-      mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues,
-    ).toMatchObject({
-      ':pk': 'STORE#users',
+    const input = mock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(input.KeyConditionExpression).toBe('#pk = :pk');
+    expect(input.ExpressionAttributeValues).toMatchObject({ ':pk': 'STORE#users' });
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
+  });
+
+  /**
+   * The concrete labels after the root narrow the Query by sort key, and the
+   * rest of the condition — the `u1` in a prefix `['users', 'u1', '*', 'x']`,
+   * say — is matched in process, so a row the key condition admits but the
+   * condition refuses is still left out.
+   */
+  it('narrows the Query by every concrete label before the first wildcard, and matches the rest in process', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        row(['users', 'u1', 'docs'], 'a'),
+        row(['users', 'u1', 'notes'], 'b'),
+        row(['users', 'u1'], 'c'),
+      ],
     });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({
+        limit: 100,
+        offset: 0,
+        matchConditions: [{ matchType: 'prefix', path: ['users', 'u1', '*'] }],
+      }),
+    );
+    expect(out).toEqual([
+      ['users', 'u1', 'docs'],
+      ['users', 'u1', 'notes'],
+    ]);
+    const input = mock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(input.KeyConditionExpression).toBe('#pk = :pk AND begins_with(#sk, :skp)');
+    expect(input.ExpressionAttributeValues).toMatchObject({ ':pk': 'STORE#users', ':skp': 'u1#' });
   });
 
   it('falls back to a Scan when a prefix condition starts with a wildcard', async () => {

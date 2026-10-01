@@ -20,11 +20,11 @@ import { DynamoDBLangGraphError } from '../../shared/errors/base-error.js';
 import { ErrorCode } from '../../shared/errors/error-code.js';
 import { validationError } from '../../shared/errors/errors.js';
 import { passesFilter } from './filter.js';
+import { readCandidate } from './get-item.js';
 import type { ParsedSearch } from './parse.js';
 import {
   parseWholeStoreRow,
   namespaceMatchesPrefix,
-  readStoreItem,
   scopedQuery,
   type StoreItemRow,
   storeScan,
@@ -88,7 +88,13 @@ function liveRow(raw: AttributeMap, search: ParsedSearch, now: number): StoreIte
   return namespaceMatchesPrefix(record.namespace, search.namespacePrefix) ? record : undefined;
 }
 
-/** Decode the pending rows concurrently (each offloaded row is one S3 GET) and keep the ones passing the filter. */
+/**
+ * Decode the pending rows concurrently (each offloaded row is one S3 GET) and
+ * keep the ones passing the filter. A row overwritten since the page that
+ * listed it is read again and judged as it now is; one deleted since is
+ * dropped — a page is read whole before anything is downloaded, so this is
+ * the reader with the widest window for that race.
+ */
 async function flush(
   context: StoreContext,
   search: ParsedSearch,
@@ -98,16 +104,16 @@ async function flush(
   if (state.pending.length === 0) return;
   const batch = state.pending;
   state.pending = [];
-  const items = await mapWithConcurrency(
+  const reads = await mapWithConcurrency(
     batch,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (record) => readStoreItem(context, record, signal),
+    (record) => readCandidate(context, record, signal),
   );
-  batch.forEach((record, index) => {
-    if (passesFilter(items[index], search.filter)) {
-      state.collected.push({ item: items[index], embeddings: storedVectors(record) });
+  for (const read of reads) {
+    if (read !== undefined && passesFilter(read.item, search.filter)) {
+      state.collected.push({ item: read.item, embeddings: storedVectors(read.row) });
     }
-  });
+  }
 }
 
 /**

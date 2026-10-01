@@ -35,7 +35,7 @@ import {
 } from '../../shared/validation/primitives.js';
 import type { ListNamespacesOptions } from '../types.js';
 import type { JsonValue } from './filter.js';
-import { sortKey } from './rows.js';
+import { sortKey, sortKeyPrefix } from './rows.js';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -105,13 +105,24 @@ function parseLabels(value: unknown, field: string): string[] {
  *
  * Returns: a copy of the labels, as a {@link NamespacePrefix}. A prefix no
  * stored namespace could ever match is refused rather than answered with a
- * silent empty page.
+ * silent empty page: a malformed label, or labels past the first that compose
+ * more sort key than DynamoDB allows a row to carry before any key — every
+ * label legal on its own, and still no item under it.
  *
- * Throws: `VALIDATION` naming `field` for a non-array, or `<field> element` for
- * a malformed label.
+ * Throws: `VALIDATION` naming `field` for a non-array or a path too wide for
+ * any sort key, or `<field> element` for a malformed label.
  */
 export function parseNamespacePrefix(value: unknown, field: string): NamespacePrefix {
-  return parseLabels(value, field) as NamespacePrefix;
+  const labels = parseLabels(value, field);
+  const bytes = Buffer.byteLength(sortKeyPrefix(labels), 'utf8');
+  if (bytes >= MAX_SORT_KEY_BYTES) {
+    throw validationError(
+      `${field} leads a sort key with ${bytes} bytes before any key; DynamoDB caps sort keys at ` +
+        `${MAX_SORT_KEY_BYTES} bytes, so no stored namespace can match it`,
+      field,
+    );
+  }
+  return labels as NamespacePrefix;
 }
 
 /**

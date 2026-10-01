@@ -91,20 +91,64 @@ function sameObject(read: StoreItemRow, reread: StoreItemRow): boolean {
   );
 }
 
+/** A row and the item it decodes to, read together so a caller can use the row's own fields. */
+export interface ReadCandidate {
+  readonly row: StoreItemRow;
+  readonly item: Item;
+}
+
 /**
- * Retrieve a single item by namespace and key (strongly consistent), or null.
+ * The item a row denotes, recovering from a concurrent overwrite of that row.
  *
  * An offloaded item can lose a race with a concurrent overwrite: between the
  * row read and the S3 download the writer commits a new descriptor and deletes
  * the object this read was about to fetch. That surfaces as `NoSuchKey` — or
  * as a 403 `AccessDenied` for a role without `s3:ListBucket`, which S3 answers
  * for a missing key instead — and one strongly-consistent re-read settles it —
- * the row now points at the new object (return that), is gone (null), or
+ * the row now points at the new object (that is the answer), is gone, or
  * still points at the same missing object (a genuine loss, rethrown) — and a
  * refused download on an unchanged row is rethrown the same way, since it is
  * then a real permission failure. A row the overwrite left with no descriptor
  * at all is a replacement like any other: it is decoded, and refused by its
  * own coded error. Any other download failure propagates.
+ *
+ * Every reader that downloads a row it read earlier takes this route: `get`,
+ * whose window is one read; a search, which reads a whole page before it
+ * downloads anything; and a reconcile, which reads a whole namespace. A
+ * search that failed on it failed for an item that is live and readable a
+ * moment later.
+ *
+ * Accepts: `record` — a row read moments ago, whose object may since have been
+ * released. `signal` — aborts the download and the re-read.
+ *
+ * Returns: the row that was finally decoded and its item — the one given, or
+ * the one the overwrite left — or `undefined` when the re-read finds the row
+ * gone or expired.
+ *
+ * Throws: as {@link readStoreItem}, for the row finally decoded; the
+ * download's own failure when the re-read finds the same row.
+ */
+export async function readCandidate(
+  context: StoreContext,
+  record: StoreItemRow,
+  signal?: AbortSignal,
+): Promise<ReadCandidate | undefined> {
+  try {
+    return { row: record, item: await readStoreItem(context, record, signal) };
+  } catch (error) {
+    if (!isMissingObjectError(error as Error) && !isRefusedObjectError(error as Error)) throw error;
+    const fresh = await readRow(context, record.namespace, record.key, signal);
+    if (!fresh) return undefined;
+    if (sameObject(record, fresh)) throw error;
+    return { row: fresh, item: await readStoreItem(context, fresh, signal) };
+  }
+}
+
+/**
+ * Retrieve a single item by namespace and key (strongly consistent), or null.
+ *
+ * A download that finds its object released by a concurrent overwrite is
+ * settled by {@link readCandidate}.
  *
  * Accepts: `address` — parsed; no check is repeated here. `signal` — aborts
  * the reads.
@@ -134,13 +178,6 @@ export async function getItem(
   const { namespace, key } = address;
   const record = await readRow(context, namespace, key, signal);
   if (!record) return null;
-  try {
-    return await readStoreItem(context, record, signal);
-  } catch (error) {
-    if (!isMissingObjectError(error as Error) && !isRefusedObjectError(error as Error)) throw error;
-    const fresh = await readRow(context, namespace, key, signal);
-    if (!fresh) return null;
-    if (sameObject(record, fresh)) throw error;
-    return readStoreItem(context, fresh, signal);
-  }
+  const read = await readCandidate(context, record, signal);
+  return read === undefined ? null : read.item;
 }

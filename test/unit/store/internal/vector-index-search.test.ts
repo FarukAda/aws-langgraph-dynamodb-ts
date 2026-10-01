@@ -40,25 +40,31 @@ describe('searchViaBackend', () => {
   it('returns the matched items in the backend s order, each carrying its score', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreRow(
-      ctx,
-      { namespace: ['users', 'u1'], key: 'a' },
-      { a: 1 },
-      {
-        createdAt: 'c',
-        updatedAt: 'u',
-      },
+    const rows = await Promise.all(
+      ['a', 'b'].map((key) =>
+        buildStoreRow(
+          ctx,
+          { namespace: ['users', 'u1'], key },
+          { key },
+          { createdAt: 'c', updatedAt: 'u' },
+        ),
+      ),
     );
-    mock.on(GetCommand).resolves({ Item: record });
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => ({
+      Item: rows.find((row) => row.SK === input.Key.SK),
+    }));
     const backend = backendWith([
-      { namespace: ['users', 'u1'], key: 'a', score: 0.9 },
+      { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
       { namespace: ['users', 'u1'], key: 'a', score: 0.4 },
     ]);
     const found = await searchViaBackend(
       { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
-    expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
+    expect(found.map((item) => [item.key, item.score])).toEqual([
+      ['b', 0.9],
+      ['a', 0.4],
+    ]);
   });
 
   /** The backend may ignore the prefix; DynamoDB stays canonical. */
@@ -189,18 +195,54 @@ describe('searchViaBackend', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
 
-  /** A backend that returns one key twice in a round costs one read, not two. */
-  it('reads a repeated key once and still scores both matches', async () => {
+  /**
+   * A backend that holds several vectors for one item — one per passage, say —
+   * can return that item more than once in a round. A page is a page of items,
+   * so the item is answered once, at the first score the backend gave it, as
+   * the reference store and the in-DynamoDB ranker answer an item by its
+   * best-matching vector; and it costs one read, not two.
+   */
+  it('answers a repeated key once, at its first score, after one read', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const rows = await Promise.all(
+      ['a', 'b'].map((key) =>
+        buildStoreRow(
+          ctx,
+          { namespace: ['users', 'u1'], key },
+          { key },
+          { createdAt: 'c', updatedAt: 'u' },
+        ),
+      ),
+    );
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => ({
+      Item: rows.find((row) => row.SK === input.Key.SK),
+    }));
+    const backend = backendWith([
+      { namespace: ['users', 'u1'], key: 'a', score: 0.9 },
+      { namespace: ['users', 'u1'], key: 'a', score: 0.4 },
+      { namespace: ['users', 'u1'], key: 'b', score: 0.3 },
+    ]);
+    const found = await searchViaBackend(
+      { ...ctx, vectorBackend: backend, index },
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
+    );
+    expect(found.map((item) => [item.key, item.score])).toEqual([
+      ['a', 0.9],
+      ['b', 0.3],
+    ]);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(2);
+  });
+
+  /** A repeat does not fill a page slot, so the backend is asked for more when repeats leave it short. */
+  it('asks the backend for more when repeats leave the page short', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
     const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
-      {
-        createdAt: 'c',
-        updatedAt: 'u',
-      },
+      { createdAt: 'c', updatedAt: 'u' },
     );
     mock.on(GetCommand).resolves({ Item: record });
     const backend = backendWith([
@@ -211,8 +253,8 @@ describe('searchViaBackend', () => {
       { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
-    expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
-    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(found.map((item) => item.score)).toEqual([0.9]);
+    expect(backend.query.mock.calls.map((call) => call[2])).toEqual([2, 4]);
   });
 
   it('warns when the backend s scores ascend, and forwards its order unchanged', async () => {
@@ -228,17 +270,22 @@ describe('searchViaBackend', () => {
         updatedAt: 'u',
       },
     );
-    mock.on(GetCommand).resolves({ Item: record });
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => ({
+      Item: { ...record, SK: input.Key.SK, key: input.Key.SK.slice(-1) },
+    }));
     const backend = backendWith([
       { namespace: ['users', 'u1'], key: 'a', score: 0.1 },
-      { namespace: ['users', 'u1'], key: 'a', score: 0.9 },
+      { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
     ]);
     const found = await searchViaBackend(
       { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), expect.anything());
-    expect(found.map((item) => item.score)).toEqual([0.1, 0.9]);
+    expect(found.map((item) => [item.key, item.score])).toEqual([
+      ['a', 0.1],
+      ['b', 0.9],
+    ]);
   });
 
   /** The prefix is checked label by label and never for how many labels it holds. */
