@@ -22,6 +22,9 @@ import { pathToFileURL } from 'node:url';
 
 import { isMain } from '../../scripts/is-main.mjs';
 
+/** A bound on each script run, so a script that hung could not hang the suite. */
+const SCRIPT_TIMEOUT_MS = 20_000;
+
 const SCRIPTS = resolve('scripts');
 let sandbox;
 let linked;
@@ -61,7 +64,10 @@ describe('isMain', () => {
 
 /** Run a script as CI does, and report how it exited. */
 const run = (path, env, args = []) =>
-  spawnSync(process.execPath, [path, ...args], { env: { ...process.env, ...env } }).status;
+  spawnSync(process.execPath, [path, ...args], {
+    env: { ...process.env, ...env },
+    timeout: SCRIPT_TIMEOUT_MS,
+  }).status;
 
 describe('a script run through a linked path', () => {
   it('require-green-ci still evaluates: no check runs is "wait" (2), never "publish" (0)', () => {
@@ -75,6 +81,7 @@ describe('a script run through a linked path', () => {
   it('peer-floors still prints the floors', () => {
     const result = spawnSync(process.execPath, [join(linked, 'peer-floors.mjs')], {
       encoding: 'utf8',
+      timeout: SCRIPT_TIMEOUT_MS,
     });
     assert.equal(result.status, 0);
     assert.match(result.stdout, /@aws-sdk\/client-s3@/);

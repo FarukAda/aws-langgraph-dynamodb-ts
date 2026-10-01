@@ -26,6 +26,19 @@ const SDK = '@aws-sdk/lib-dynamodb';
 
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 
+/**
+ * How long one command may run (10 minutes; the install is the slow one). A
+ * bound on each command rather than on the test, because a `node:test`
+ * timeout is a timer and cannot fire while a synchronous `execSync` holds the
+ * event loop — see the package smoke test beside this one.
+ */
+const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** `execSync`, bounded by {@link COMMAND_TIMEOUT_MS}. */
+function run(command, options) {
+  return execSync(command, { ...options, timeout: COMMAND_TIMEOUT_MS });
+}
+
 /** Every required peer at its declared range, as the package smoke test reads them. */
 const RUNTIME_DEPS = Object.entries(manifest.peerDependencies)
   .filter(([name]) => !manifest.peerDependenciesMeta?.[name]?.optional)
@@ -71,23 +84,23 @@ function installedVersion(packageRoot) {
  */
 function compileConsumer(dir) {
   try {
-    execSync(TSC, { cwd: dir, stdio: 'pipe' });
+    run(TSC, { cwd: dir, stdio: 'pipe' });
     return { compiled: true, output: '' };
   } catch (error) {
     return { compiled: false, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
   }
 }
 
-test("a consumer's own DocumentClient type-checks against the packed package", { timeout: 900000 }, async (t) => {
-  execSync('npm run build', { cwd: ROOT, stdio: 'ignore' });
-  const tarball = execSync('npm pack --silent', { cwd: ROOT }).toString().trim().split(/\s+/).pop();
+test("a consumer's own DocumentClient type-checks against the packed package", async (t) => {
+  run('npm run build', { cwd: ROOT, stdio: 'ignore' });
+  const tarball = run('npm pack --silent', { cwd: ROOT }).toString().trim().split(/\s+/).pop();
   const tarballPath = join(ROOT, tarball);
   const dir = mkdtempSync(join(tmpdir(), 'lg-ddb-consumer-'));
   try {
     for (const file of ['package.json', 'consumer.ts']) {
       cpSync(join(PROJECT, file), join(dir, file));
     }
-    execSync(`npm install "${tarballPath}" ${RUNTIME_DEPS.join(' ')}`, { cwd: dir, stdio: 'ignore' });
+    run(`npm install "${tarballPath}" ${RUNTIME_DEPS.join(' ')}`, { cwd: dir, stdio: 'ignore' });
 
     /**
      * The positive control. A project that ends up with one deduplicated SDK

@@ -14,8 +14,10 @@
  * exercised is not a gate.
  */
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { evaluate, parseCheckRuns, REQUIRED_CHECKS } from '../../scripts/require-green-ci.mjs';
 
@@ -211,5 +213,42 @@ describe('parseCheckRuns', () => {
     const name = 'test ("node 24" on macos-latest)';
     const [run] = parseCheckRuns(JSON.stringify({ name, status: 'queued', conclusion: null }));
     assert.equal(run.name, name);
+  });
+});
+
+/** Run the gate as the release workflow does, and report how it exited. */
+const gateExit = (checkRuns) =>
+  spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('../../scripts/require-green-ci.mjs', import.meta.url))],
+    { env: { ...process.env, CHECK_RUNS: checkRuns }, encoding: 'utf8', timeout: 20_000 },
+  ).status;
+
+/** The listing as `gh api --paginate --jq` emits it: one object per line. */
+const listing = (runs) => runs.map((run) => JSON.stringify(run)).join('\n');
+
+describe('the exit codes the release loop acts on', () => {
+  it('publishes (0) on an all-green listing', () => {
+    assert.equal(gateExit(listing(allGreen())), 0);
+  });
+
+  it('stops (1) on a failed required check', () => {
+    const runs = allGreenExcept(required[0], {
+      name: required[0],
+      status: 'completed',
+      conclusion: 'failure',
+    });
+    assert.equal(gateExit(listing(runs)), 1);
+  });
+
+  /**
+   * `gh api` can hand the loop something other than check runs — an error
+   * body, a truncated page, a rate-limit notice — and the next call usually
+   * succeeds. The loop only ever sleeps on 2, so an unreadable listing is
+   * "not there yet", never the 1 that would abandon the release.
+   */
+  it('waits (2), rather than crashing out as 1, on a listing it cannot read', () => {
+    assert.equal(gateExit('{"message":"Server Error"'), 2);
+    assert.equal(gateExit('not json at all'), 2);
   });
 });

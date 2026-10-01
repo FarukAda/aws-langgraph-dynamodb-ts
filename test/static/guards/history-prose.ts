@@ -8,7 +8,8 @@ import { commentRanges } from './comments';
  * `CHANGELOG.md` and in the commit that made it. `no longer` is not here: it
  * as often describes the present ("an object that no longer exists").
  */
-const HISTORY = /\b(?:used to|until now|previously|formerly)\b/i;
+const HISTORY =
+  /\b(?:used to|until now|previously|formerly|historically|in the past|at one time|before this change|as earlier releases did|the pre-\d+\.\d+(?:\.\d+)? behaviou?r|held an inline copy)\b/i;
 
 /** One comment, or a run of adjacent `//` comments, as source-ordered logical lines. */
 interface CommentBlock {

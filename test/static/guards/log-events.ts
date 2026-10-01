@@ -113,6 +113,26 @@ function quotedNames(cell: string): string[] {
   return [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
 }
 
+/**
+ * The README rows whose quoted message matches no event in `events`: rows
+ * left behind by a renamed or removed event, which an operator would build an
+ * alert on and never see fire. A row quotes at least the message's first
+ * {@link QUOTED_PREFIX} characters and an event carries the literal part of
+ * its message — which, for a message that opens with a placeholder such as
+ * the operation's name, is the text after it — so the two match when the row
+ * contains the literal, or the literal begins with what the row quotes.
+ */
+export function staleRows(section: string, events: readonly LogEvent[]): string[] {
+  const messages = events.map((event) => event.message.trim());
+  const matches = (quoted: string, message: string): boolean =>
+    quoted.includes(message) || message.startsWith(quoted);
+  return section
+    .split('\n')
+    .filter((line) => /^\| `(info|warn|error)` \|/.test(line))
+    .map((line) => quotedNames(line.split('|')[2] ?? '')[0] ?? '')
+    .filter((quoted) => quoted !== '' && !messages.some((message) => matches(quoted, message)));
+}
+
 /** The README table row that quotes `message`, or undefined when none does. */
 function rowFor(section: string, message: string): string | undefined {
   const quoted = message.trim().slice(0, QUOTED_PREFIX);

@@ -4,6 +4,7 @@ import {
   misdocumentedFields,
   mislevelledEvents,
   readmeLoggingSection,
+  staleRows,
   undocumentedEvents,
 } from './guards/log-events';
 
@@ -46,6 +47,21 @@ describe('the README Logging section', () => {
     const events = logEvents();
     expect(events.length).toBeGreaterThan(10);
     expect(undocumentedEvents(readmeLoggingSection(), events)).toEqual([]);
+  });
+});
+
+describe('the README Logging section names only events the code emits', () => {
+  it('has no row left behind by a renamed or removed event', () => {
+    expect(staleRows(readmeLoggingSection(), logEvents())).toEqual([]);
+  });
+
+  it('reports a row whose quoted message no event begins with', () => {
+    const events = logEventsIn("logger.warn('probe event', { a: 1 });");
+    const section = [
+      '| `warn` | `probe event` | `a` | m |',
+      '| `warn` | `gone event` | `a` | m |',
+    ].join('\n');
+    expect(staleRows(section, events)).toEqual(['gone event']);
   });
 });
 

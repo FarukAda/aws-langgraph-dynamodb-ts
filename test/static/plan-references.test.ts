@@ -156,6 +156,22 @@ describe('planReferencesIn — bare finding ids', () => {
     expect(planReferencesIn('  describe("M9: listing", () => {', 'x.ts')).toHaveLength(1);
   });
 
+  it('flags a finding id qualified inside parentheses in a title', () => {
+    expect(
+      planReferencesIn(
+        "describe('a delete of a key with no row (D1 in miniature)', () => {",
+        'x.ts',
+      ),
+    ).toHaveLength(1);
+    expect(
+      planReferencesIn("describe('scalars end at a delimiter (F2 follow-up)', () => {", 'x.ts'),
+    ).toHaveLength(1);
+    expect(
+      planReferencesIn("  it('keeps ordering (F3 regression guard)', () => {", 'x.ts'),
+    ).toHaveLength(1);
+    expect(planReferencesIn("  it('names the key (F1 key)', () => {", 'x.ts')).toHaveLength(1);
+  });
+
   it('flags a finding id cited in comment prose', () => {
     expect(
       planReferencesIn(' * reopens exactly the leak C4 closes: the title', 'x.ts'),

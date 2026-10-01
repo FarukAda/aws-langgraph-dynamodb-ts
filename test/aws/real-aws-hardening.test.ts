@@ -7,10 +7,13 @@ import {
   waitUntilTableExists,
   waitUntilTableNotExists,
 } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
-import { DynamoDBFactory } from '../../src/index';
+import { sessionPartition } from '../../src/history/internal/rows';
+import { DynamoDBChatMessageHistory, DynamoDBFactory, ErrorCode } from '../../src/index';
+import { awsError, installFaults } from '../integration/helpers/fault-injection';
 import { liveRegion } from './helpers/env';
 
 const clientConfig = { region: liveRegion() };
@@ -207,23 +210,74 @@ describe('v0.8.0 hardening against real AWS', () => {
     }
   });
 
-  it('a rolled-back multi-chunk append leaves no ghost session', async () => {
+  /**
+   * The row is read back raw, not through `listSessions`: a ghost session is
+   * a row with `messageCount: 0` and a title, and a listing that happened to
+   * hide such a row would pass a weaker check while the row stayed behind.
+   */
+  async function sessionRow(id: string) {
+    const raw = await DynamoDBDocument.from(admin).get({
+      TableName: tableName,
+      Key: { PK: sessionPartition(id), SK: 'HISTORY#SESSION' },
+      ConsistentRead: true,
+    });
+    return raw.Item;
+  }
+
+  it('an append refused before anything is written leaves no session row behind', async () => {
     const built = adapters();
     const id = 'conv-6';
     try {
-      // 105 messages spans two chunks (99 max per transaction). One oversized
-      // message makes the *second* chunk hit a genuine DynamoDB item-size
-      // rejection, after the first has already committed.
+      // Every message is encoded before any chunk is sent, so one message no
+      // row can hold refuses the whole call at the encode, with nothing to
+      // roll back — and nothing left behind.
       const messages = Array.from({ length: 104 }, (_, i) => new HumanMessage(`tiny message ${i}`));
       messages.push(new HumanMessage('x'.repeat(450_000)));
 
-      await expect(built.history.addMessages(id, messages)).rejects.toThrow();
+      await expect(built.history.addMessages(id, messages)).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+      });
 
       expect(await built.history.getMessages(id)).toEqual([]);
-      const { sessions: sessions } = await built.history.listSessions();
-      expect(sessions.find((s) => s.sessionId === id)).toBeUndefined();
+      expect(await sessionRow(id)).toBeUndefined();
     } finally {
       built.destroy();
+    }
+  });
+
+  /**
+   * The real rollback, against the real service: the first chunk of 150
+   * messages commits — its 99 rows and the session row this call creates —
+   * and the second is refused by injected middleware, so the rows the first
+   * wrote are deleted with real `BatchWriteItem`s and the session row this
+   * call created is removed under its real conditional delete.
+   */
+  it('a rolled-back multi-chunk append leaves no ghost session', async () => {
+    const base = new DynamoDBClient(clientConfig);
+    installFaults(base, [
+      {
+        match: (_name, input) =>
+          Array.isArray((input as { TransactItems?: unknown[] }).TransactItems),
+        fail: () => awsError('ValidationException', 'injected chunk-2 failure'),
+        skip: 1,
+        times: 1,
+      },
+    ]);
+    const history = new DynamoDBChatMessageHistory({
+      tableName,
+      client: DynamoDBDocument.from(base),
+    });
+    const id = 'conv-6-rollback';
+    try {
+      const messages = Array.from({ length: 150 }, (_, i) => new HumanMessage(`m${i}`));
+
+      await expect(history.addMessages(id, messages)).rejects.toThrow('injected chunk-2');
+
+      expect(await history.getMessages(id)).toEqual([]);
+      expect(await sessionRow(id)).toBeUndefined();
+    } finally {
+      history.destroy();
+      base.destroy();
     }
   });
 

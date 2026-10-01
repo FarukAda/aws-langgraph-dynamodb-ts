@@ -268,3 +268,41 @@ export function unguardedMethods(): UnguardedMethod[] {
     gapsOf(declaration, module),
   );
 }
+
+/**
+ * The type names `entry` (shaped like `src/index.ts`) makes public: every
+ * specifier of an `export type { … } from` declaration and every type-only
+ * specifier of a value export list, by its public name.
+ */
+export function publicTypeExports(entry: string): string[] {
+  const parsed = ts.createSourceFile('index.ts', entry, ts.ScriptTarget.Latest, true);
+  const names: string[] = [];
+  for (const node of parsed.statements) {
+    if (!ts.isExportDeclaration(node) || node.exportClause === undefined) continue;
+    if (!ts.isNamedExports(node.exportClause)) continue;
+    for (const element of node.exportClause.elements) {
+      if (node.isTypeOnly || element.isTypeOnly) names.push(element.name.text);
+    }
+  }
+  return names;
+}
+
+/**
+ * The type names a test pins by importing them from the package entry — the
+ * specifiers of its `import type { … } from '<path to src/index>'`
+ * declarations, and the type-only specifiers of a value import from it.
+ */
+export function pinnedTypeImports(testSource: string): string[] {
+  const parsed = ts.createSourceFile('pin.test.ts', testSource, ts.ScriptTarget.Latest, true);
+  const names: string[] = [];
+  for (const node of parsed.statements) {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) continue;
+    if (!/\/src\/index(?:\.js)?$/.test(node.moduleSpecifier.text)) continue;
+    const clause = node.importClause;
+    if (clause?.namedBindings === undefined || !ts.isNamedImports(clause.namedBindings)) continue;
+    for (const element of clause.namedBindings.elements) {
+      if (clause.isTypeOnly || element.isTypeOnly) names.push(element.name.text);
+    }
+  }
+  return names;
+}

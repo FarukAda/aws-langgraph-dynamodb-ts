@@ -103,6 +103,15 @@ const AUDIT_ID_PREFIXED =
 const TITLE_FINDING_ID = /(['"`])(?:C|H|M|L|I)[1-9]\d?[a-z]?:\s/;
 
 /**
+ * A short finding id qualified inside parentheses — `(D1 in miniature)`,
+ * `(F2 follow-up)`, `(F3 regression guard)` — the other form a test title
+ * took when it cited a review's finding beside what it pins. The review is
+ * not in the repository, so the qualifier explains nothing to a reader; the
+ * title says what the test pins instead.
+ */
+const QUALIFIED_FINDING_ID = /\((?:C|D|F|H|I|L|M)[1-9]\d?[a-z]?(?: [a-z-]+){1,3}\)/;
+
+/**
  * A short finding id cited in comment prose — "the leak C4 closes", "C1/C2:",
  * "(the I9 collision" — limited to the audit's own severity prefixes, so `S3`,
  * `EC2` and `UTF-16` never match. The audit numbered from 1, so `C0` does not
@@ -140,6 +149,7 @@ const ALWAYS_CHECKED = [
   AUDIT_ID_LIST,
   AUDIT_ID_PREFIXED,
   TITLE_FINDING_ID,
+  QUALIFIED_FINDING_ID,
 ];
 
 /** The patterns checked only on a comment line: in code, each is ordinary data. */

@@ -11,8 +11,14 @@ export interface CommentViolation {
     | 'line-comment-on-declaration';
 }
 
-/** A comment that switches a checker off. */
-const DIRECTIVE = /eslint-(?:disable|enable)|@ts-(?:ignore|expect-error|nocheck)/;
+/**
+ * A comment that switches a checker off: the linter, the compiler, the
+ * coverage instrumenter (`istanbul`, `c8` and `v8` all read an `ignore` hint,
+ * and a branch hidden from the 100% gate is a branch no test had to reach)
+ * or the formatter.
+ */
+const DIRECTIVE =
+  /eslint-(?:disable|enable)|@ts-(?:ignore|expect-error|nocheck)|\b(?:istanbul|c8|v8) ignore\b|prettier-ignore/;
 
 /** The nodes a JSDoc block documents: what TypeScript attaches one to, and what typedoc renders. */
 function isDeclaration(node: ts.Node): boolean {
