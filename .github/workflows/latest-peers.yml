@@ -45,9 +45,17 @@ jobs:
         run: npm ci
 
       # --no-save: the lockfile is what CI and the release test; this run
-      # only asks what the newest releases would do.
+      # only asks what the newest releases would do. A failure here is said
+      # apart from a failure of the tiers below: npm refusing to place the
+      # newest peers beside this repository's dev dependencies (ERESOLVE against
+      # the pinned `langchain` or `@langchain/aws`) tested nothing, and would
+      # otherwise read as the upstream break this workflow exists to report.
       - name: Install the newest LangGraph and LangChain releases
-        run: npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest
+        run: |
+          if ! npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest; then
+            echo "::error title=The newest peers did not install::npm could not place them beside this repository's dev dependencies, so nothing was tested. Move the dev-dependency pin that refuses them; this is not evidence that an upstream release broke the package."
+            exit 1
+          fi
 
       # Fails first when LangGraph adds a key to an option object this package
       # ignores at run time (test/types/upstream-option-keys.test.ts).

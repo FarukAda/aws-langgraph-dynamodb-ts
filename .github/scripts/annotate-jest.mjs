@@ -39,9 +39,15 @@ for (const file of report.testResults ?? []) {
   }
 }
 
-/** Workflow-command values must escape newlines and the two command delimiters. */
-const encode = (text) =>
-  text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A').replace(/,/g, '%2C');
+/**
+ * The two escapings a workflow command needs, as the runner undoes them. The
+ * data after `::` has `%`, CR and LF escaped and nothing else: a `%3A` or
+ * `%2C` left in it is shown as written, and every assertion message carries a
+ * colon. A property — `title=`, `file=` — escapes `:` and `,` as well, because
+ * those delimit the properties.
+ */
+const encodeData = (text) => text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+const encodeProperty = (text) => encodeData(text).replace(/:/g, '%3A').replace(/,/g, '%2C');
 const ANSI = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
 const strip = (text) => text.replace(ANSI, '');
 
@@ -49,13 +55,13 @@ const strip = (text) => text.replace(ANSI, '');
 if (failures.length > 0) {
   const roll = failures.map((failure) => `${failure.path} › ${failure.name}`).join('\n');
   console.log(
-    `::error title=${encode(`${label}: ${failures.length} failing test(s)`)}::${encode(roll.slice(0, 6000))}`,
+    `::error title=${encodeProperty(`${label}: ${failures.length} failing test(s)`)}::${encodeData(roll.slice(0, 6000))}`,
   );
 }
 for (const failure of failures.slice(0, MAX_ANNOTATIONS - 1)) {
   const message = strip(failure.message).slice(0, MAX_MESSAGE_CHARS);
   console.log(
-    `::error file=${failure.path},line=1,title=${encode(`${label}: ${failure.name}`)}::${encode(message)}`,
+    `::error file=${encodeProperty(failure.path)},line=1,title=${encodeProperty(`${label}: ${failure.name}`)}::${encodeData(message)}`,
   );
 }
 
