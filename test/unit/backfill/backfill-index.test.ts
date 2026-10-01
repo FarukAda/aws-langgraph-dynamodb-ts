@@ -29,6 +29,25 @@ describe('backfillRecencyIndex', () => {
   });
 
   /**
+   * The backfill must shard exactly as the writers do, or a row it indexes
+   * lands where no listing with that count looks: `c1` is shard 1 of the
+   * default 8 and shard 2 of 3, `s1` shard 1 of 8 and 0 of 3.
+   */
+  it('shards by indexShards exactly as the writers do, defaulting to 8', async () => {
+    const shardsWritten = async (indexShards?: number) => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(ScanCommand).resolves({ Items: [meta, session] });
+      mock.on(UpdateCommand).resolves({});
+      await backfillRecencyIndex({ client, tableName: TABLE, indexShards });
+      return mock
+        .commandCalls(UpdateCommand)
+        .map((call) => call.args[0].input.ExpressionAttributeValues?.[':gpk'] as string);
+    };
+    expect(await shardsWritten()).toEqual(['CHKPT#1', 'SESS#1']);
+    expect(await shardsWritten(3)).toEqual(['CHKPT#2', 'SESS#0']);
+  });
+
+  /**
    * A row a live adapter already indexed carries its true timestamp; replacing
    * it with the pre-index epoch would move a live row to the bottom of every
    * listing. The row must also still be there, since `UpdateItem` upserts.

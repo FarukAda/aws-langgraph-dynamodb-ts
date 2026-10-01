@@ -1,6 +1,11 @@
 import { S3Client } from '@aws-sdk/client-s3';
 
-import { createDefaultS3Client, loadS3Sdk } from '../../../../../src/shared/codec/s3/client';
+import {
+  createDefaultS3Client,
+  loadS3Sdk,
+  withS3ClientDefaults,
+} from '../../../../../src/shared/codec/s3/client';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../../../../src/shared/dynamodb/client';
 import { toPublicError } from '../../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
@@ -44,6 +49,43 @@ describe('createDefaultS3Client', () => {
     const client = await createDefaultS3Client({ region: 'us-east-1', maxAttempts: 5 });
     await expect(client.config.maxAttempts()).resolves.toBe(5);
     client.destroy();
+  });
+});
+
+describe('withS3ClientDefaults', () => {
+  const DEFAULTS = {
+    maxAttempts: 1,
+    requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
+  };
+
+  it('fills both defaults into a config that sets neither, keeping what it does set', () => {
+    expect(withS3ClientDefaults({})).toEqual(DEFAULTS);
+    expect(withS3ClientDefaults({ region: 'eu-west-1', forcePathStyle: true })).toEqual({
+      ...DEFAULTS,
+      region: 'eu-west-1',
+      forcePathStyle: true,
+    });
+  });
+
+  it('lets a value the config sets win, each on its own', () => {
+    expect(withS3ClientDefaults({ maxAttempts: 4 })).toEqual({ ...DEFAULTS, maxAttempts: 4 });
+    expect(withS3ClientDefaults({ requestHandler: { requestTimeout: 9 } })).toEqual({
+      maxAttempts: 1,
+      requestHandler: { requestTimeout: 9 },
+    });
+  });
+
+  /** A key named with no value sets nothing; spread over a default it would take it away. */
+  it('keeps the default for a key the config names as undefined', () => {
+    expect(withS3ClientDefaults({ maxAttempts: undefined, requestHandler: undefined })).toEqual(
+      DEFAULTS,
+    );
+  });
+
+  it("returns a copy, leaving the caller's own config as it was", () => {
+    const config = { region: 'eu-west-1' };
+    expect(withS3ClientDefaults(config)).not.toBe(config);
+    expect(config).toEqual({ region: 'eu-west-1' });
   });
 });
 

@@ -79,8 +79,18 @@ describe('a caller whose logger throws', () => {
 
   it('still sees store.put succeed for a row DynamoDB already holds', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    // The pre-read finds no row; the confirmation read that precedes the
+    // backend sync finds the row this put wrote, at its own revision.
+    let written: { rev?: string } | undefined;
+    mock.on(PutCommand).callsFake((input) => {
+      written = input.Item as { rev?: string };
+      return {};
+    });
+    mock
+      .on(GetCommand)
+      .callsFake((input: { ExpressionAttributeNames?: Record<string, string> }) =>
+        input.ExpressionAttributeNames?.['#a0'] === 'rev' ? { Item: { rev: written?.rev } } : {},
+      );
     const backend = {
       upsert: jest.fn().mockRejectedValue(accessDenied()),
       query: jest.fn(),

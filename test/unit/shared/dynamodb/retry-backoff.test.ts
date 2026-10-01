@@ -1,4 +1,10 @@
-import { fullJitter, nextBackoffDelay, sleep } from '../../../../src/shared/dynamodb/retry';
+import {
+  backoffCapMs,
+  fullJitter,
+  MAX_BACKOFF_DELAY_MS,
+  nextBackoffDelay,
+  sleep,
+} from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError } from '../../../../src/shared/errors/errors';
 
@@ -6,6 +12,23 @@ describe('nextBackoffDelay', () => {
   it('doubles up to the cap', () => {
     expect(nextBackoffDelay(100)).toBe(200);
     expect(nextBackoffDelay(4000, 5000)).toBe(5000);
+  });
+});
+
+describe('backoffCapMs', () => {
+  it('is the cap the caller names, above the base or below it', () => {
+    expect(backoffCapMs(100, 2000)).toBe(2000);
+    expect(backoffCapMs(100, 10)).toBe(10);
+  });
+
+  it('is the default for a base at or below it', () => {
+    expect(backoffCapMs(100, undefined)).toBe(MAX_BACKOFF_DELAY_MS);
+    expect(backoffCapMs(MAX_BACKOFF_DELAY_MS, undefined)).toBe(MAX_BACKOFF_DELAY_MS);
+  });
+
+  /** Under the default cap the base would be cut to it: accepted, then ignored. */
+  it('rises to a base given above the default', () => {
+    expect(backoffCapMs(MAX_BACKOFF_DELAY_MS + 1, undefined)).toBe(MAX_BACKOFF_DELAY_MS + 1);
   });
 });
 

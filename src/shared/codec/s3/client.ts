@@ -14,7 +14,7 @@ import type { S3Client } from '@aws-sdk/client-s3';
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client.js';
 import { copyForCaller } from '../../errors/base-error.js';
 import { validationError } from '../../errors/errors.js';
-import type { S3ClientConfigLike } from './client-types.js';
+import { s3ClientOptions, type S3ClientConfigLike, type S3ClientOptions } from './client-types.js';
 
 type S3Sdk = typeof import('@aws-sdk/client-s3');
 
@@ -71,14 +71,17 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
 }
 
 /**
- * An `S3Client` built from `config` with the lazily-loaded SDK.
+ * `config` with the two defaults every S3 client of this library is built
+ * with, whichever constructor builds it.
  *
- * Accepts: `config` — any `S3ClientConfig`; an explicit `maxAttempts` or
- * `requestHandler` wins over the defaults below.
+ * Accepts: `config` — the caller's `s3.clientConfig`, or an empty object.
  *
- * Returns: the client. The caller owns it and destroys it.
+ * Returns: a copy whose `maxAttempts` and `requestHandler` are the caller's
+ * own where it gave one and the default where it did not. A key named with
+ * `undefined` — a config assembled from settings that were not all set — gave
+ * none, and keeps the default.
  *
- * Throws: whatever {@link loadS3Sdk} throws.
+ * Throws: nothing.
  *
  * Guarantees: `maxAttempts` defaults to 1, so the SDK performs no retries of
  * its own and this library's retry, backoff and classification are the only
@@ -87,8 +90,8 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
  * stalled, which `maxAttempts` alone does not; a `requestHandler` in `config`
  * replaces it whole rather than merging with it.
  */
-export async function createDefaultS3Client(config: S3ClientConfigLike): Promise<S3Client> {
-  const { S3Client: S3ClientCtor } = await loadS3Sdk();
+export function withS3ClientDefaults(config: S3ClientConfigLike): S3ClientOptions {
+  const options = s3ClientOptions(config);
   // One field, where the DynamoDB client gets three, and the asymmetry is
   // deliberate. `requestTimeout` bounds request creation until response
   // *headers* arrive, and a `PutObject`'s headers arrive only once the whole
@@ -108,9 +111,25 @@ export async function createDefaultS3Client(config: S3ClientConfigLike): Promise
   // `Expect: 100-continue` and the handler then waits six seconds for the
   // continue on a throwaway agent, so the five-second idle timer is what
   // fires first — the one place the two timers race.
-  return new S3ClientCtor({
-    maxAttempts: 1,
-    requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
-    ...config,
-  });
+  return {
+    ...options,
+    maxAttempts: options.maxAttempts ?? 1,
+    requestHandler: options.requestHandler ?? { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
+  };
+}
+
+/**
+ * An `S3Client` built from `config` with the lazily-loaded SDK.
+ *
+ * Accepts: `config` — any `S3ClientConfig`; an explicit `maxAttempts` or
+ * `requestHandler` wins over the defaults {@link withS3ClientDefaults} fills
+ * in.
+ *
+ * Returns: the client. The caller owns it and destroys it.
+ *
+ * Throws: whatever {@link loadS3Sdk} throws.
+ */
+export async function createDefaultS3Client(config: S3ClientConfigLike): Promise<S3Client> {
+  const { S3Client: S3ClientCtor } = await loadS3Sdk();
+  return new S3ClientCtor(withS3ClientDefaults(config));
 }

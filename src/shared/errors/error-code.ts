@@ -14,8 +14,10 @@ export enum ErrorCode {
   /** A row or payload written in a format version newer than this package reads. */
   FORMAT_UNSUPPORTED = 'FORMAT_UNSUPPORTED',
   /**
-   * A checkpoint a delta channel still needs has expired, so the channel cannot
-   * be reconstructed and the read refuses rather than returning a shorter value.
+   * A checkpoint a delta channel still needs cannot be read — it has expired,
+   * the sweep has since removed it, or the chain of parents loops back on
+   * itself — so the channel cannot be reconstructed and the read refuses
+   * rather than returning a shorter value.
    */
   ANCESTOR_EXPIRED = 'ANCESTOR_EXPIRED',
   CONDITION_CONFLICT = 'CONDITION_CONFLICT',
@@ -44,8 +46,9 @@ export enum ErrorCode {
    * AWS or the network failed transiently: `InternalServerError`,
    * `InternalFailure`, `ServiceUnavailable`, S3's `InternalError`, a request
    * timeout (`RequestTimeout`, `RequestTimeoutException`, the SDK's
-   * `TimeoutError`), an HTTP 500/502/503/504, or a reset, refused or
-   * unreachable connection. Retry after a backoff. A write that failed this way
+   * `TimeoutError`), an HTTP 500/502/503/504, a reset, refused or unreachable
+   * connection, or a signing failure the SDK corrected its clock for or
+   * reports as expired. Retry after a backoff. A write that failed this way
    * may still have been applied.
    */
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
@@ -61,8 +64,9 @@ export enum ErrorCode {
   /**
    * AWS refused the caller's identity or permissions: `AccessDeniedException`,
    * S3's `AccessDenied`, an expired, unrecognised or malformed credential or
-   * signature. Fix the credentials or the IAM policy; do not retry.
-   * `context.awsErrorName` says which.
+   * signature — or the SDK's credential chain found no credentials to sign
+   * with (`CredentialsProviderError`). Fix the credentials or the IAM policy;
+   * do not retry. `context.awsErrorName` says which.
    */
   ACCESS_DENIED = 'ACCESS_DENIED',
   /**

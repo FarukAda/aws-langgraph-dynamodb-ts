@@ -1,5 +1,9 @@
 import { mayStillLand, settledVerdict } from '../../../../src/shared/dynamodb/idempotent-write';
-import { abortError, retryExhaustedError } from '../../../../src/shared/errors/errors';
+import {
+  abortError,
+  markMayStillLand,
+  retryExhaustedError,
+} from '../../../../src/shared/errors/errors';
 
 const timeout = (): Error => Object.assign(new Error('timed out'), { name: 'TimeoutError' });
 const answered = (): Error =>
@@ -38,6 +42,27 @@ describe('mayStillLand', () => {
   it('defaults the same way for a RETRY_EXHAUSTED error built without a record at all', () => {
     expect(mayStillLand(retryExhaustedError('spent', 5, timeout()))).toBe(true);
     expect(mayStillLand(retryExhaustedError('spent', 5, answered()))).toBe(false);
+  });
+
+  /**
+   * The budget's record outranks the failure's own shape for a refusal as
+   * much as for a spent budget: a refusal thrown after an unanswered attempt
+   * carries the same record, and the write it ended may still land.
+   */
+  it('trusts the record on a refusal that ended the budget after an unanswered attempt', () => {
+    const refused = Object.assign(new Error('expired'), {
+      name: 'ExpiredTokenException',
+      $metadata: { httpStatusCode: 400 },
+    });
+    expect(mayStillLand(refused)).toBe(false);
+    expect(mayStillLand(markMayStillLand(refused))).toBe(true);
+  });
+
+  /** "Throws nothing, for any value": a frozen error cannot take the mark, and is handed back as it was. */
+  it('leaves a frozen error unmarked rather than throwing', () => {
+    const frozen = Object.freeze(answered());
+    expect(markMayStillLand(frozen)).toBe(frozen);
+    expect(mayStillLand(frozen)).toBe(false);
   });
 
   it('judges any other failure by itself, including one DynamoDB answered ambiguously', () => {

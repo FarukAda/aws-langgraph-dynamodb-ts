@@ -58,6 +58,20 @@ describe('isSecretKey', () => {
   });
 });
 
+describe('the default key names', () => {
+  it('cover a secret key and a client secret under every spelling', () => {
+    for (const key of [
+      'secretKey',
+      'secret_key',
+      'AWS_SECRET_KEY',
+      'client_secret',
+      'clientSecret',
+    ]) {
+      expect(isSecretKey(key, DEFAULT_SECRET_KEY_PATTERNS)).toBe(true);
+    }
+  });
+});
+
 describe('isRegExp', () => {
   /** By tag, not instanceof, which answers "no" across a realm or a duplicated module. */
   it('recognises a regular expression and rejects everything else', () => {
@@ -148,6 +162,14 @@ describe('redactErrorText', () => {
     expect(text.message).not.toContain('hunter2');
   });
 
+  /** The contract names all three; an error subclass can put anything in `name`. */
+  it('redacts the name too', () => {
+    const error = Object.assign(new Error('boom'), { name: 'password=hunter2' });
+    const text = redactErrorText(error, DEFAULT_SECRET_VALUE_PATTERNS);
+    expect(text.name).toBe(`password=${REDACTED}`);
+    expect(text.changed).toBe(true);
+  });
+
   it('redacts the stack too, and carries an absent stack through as absent', () => {
     const error = new Error('boom');
     error.stack = 'at handler (token=abc123secret)';
@@ -160,6 +182,43 @@ describe('redactErrorText', () => {
   it('applies no patterns when given none', () => {
     const error = new Error('password="hunter2"');
     expect(redactErrorText(error, []).changed).toBe(false);
+  });
+
+  /**
+   * "Throws nothing, for any value" has to hold for an error the consumer
+   * built: a `name` or `stack` behind a getter that throws, or a `name` whose
+   * own `toString` throws, is still redacted as far as it can be read, and
+   * what cannot be read is described rather than letting the redactor fail
+   * on the way to the consumer's transport.
+   */
+  it('reads a name or stack that throws as unreadable rather than throwing itself', () => {
+    const hostile = new Error('password="hunter2"');
+    Object.defineProperty(hostile, 'name', {
+      get() {
+        throw new Error('no name for you');
+      },
+    });
+    Object.defineProperty(hostile, 'stack', {
+      get() {
+        throw new Error('no stack for you');
+      },
+    });
+    const text = redactErrorText(hostile, DEFAULT_SECRET_VALUE_PATTERNS);
+    expect(text.name).toBe('[unreadable name]');
+    expect(text.stack).toBe('[unreadable stack]');
+    expect(text.message).toContain(REDACTED);
+    expect(text.changed).toBe(true);
+
+    const unstringable = Object.assign(new Error('boom'), {
+      name: {
+        toString: () => {
+          throw new Error('nope');
+        },
+      },
+    } as unknown as { name: string });
+    expect(redactErrorText(unstringable, DEFAULT_SECRET_VALUE_PATTERNS).name).toBe(
+      '[unreadable name]',
+    );
   });
 });
 

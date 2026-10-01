@@ -23,6 +23,16 @@ describe('resolveRetryPolicy', () => {
     expect(resolved).toMatchObject({ maxAttempts: 8, baseDelayMs: 50, maxDelayMs: 2000 });
   });
 
+  /**
+   * A base above the default cap, given without a cap of its own, is the delay
+   * the caller asked for: under the default cap every sleep would be cut to
+   * five seconds, and the option would be accepted while doing nothing.
+   */
+  it('raises the default cap to a base delay given above it', () => {
+    const resolved = resolveRetryPolicy({ baseDelayMs: 20_000 }, fakeLogger());
+    expect(resolved).toMatchObject({ baseDelayMs: 20_000, maxDelayMs: 20_000 });
+  });
+
   it('logs every retry at debug with the attempt, delay and error name', async () => {
     const logger = fakeLogger();
     const resolved = resolveRetryPolicy({ baseDelayMs: 1 }, logger);

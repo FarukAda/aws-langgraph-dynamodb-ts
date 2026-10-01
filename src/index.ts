@@ -83,7 +83,7 @@ export { redactLogger, redactSecrets } from './shared/logging/redaction.js';
 export type { Redactable, RedactLoggerOptions } from './shared/logging/redaction.js';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options.js';
-export type { DynamoDBDocumentLike } from './shared/dynamodb/client.js';
+export type { DynamoDBDocumentLike, WriteRequest } from './shared/dynamodb/client.js';
 export type { RetryAttemptInfo, RetryOptions, RetryPolicy } from './shared/dynamodb/retry.js';
 export type { TtlOption } from './shared/validation/ttl.js';
 export type { CompressionConfig } from './shared/codec/compression.js';

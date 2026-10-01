@@ -4,6 +4,7 @@ import {
   classifiableCause,
   classifyAwsError,
   DEFAULT_RETRYABLE_ERRORS,
+  isCorrectedClockSkew,
   isMissingLifecycleConfiguration,
   isMissingObject,
 } from '../../../../src/shared/errors/classify';
@@ -46,8 +47,38 @@ describe('classifyAwsError', () => {
     ['PreconditionFailed', ErrorCode.CONDITION_CONFLICT],
     ['ItemCollectionSizeLimitExceededException', ErrorCode.AWS_REQUEST_FAILED],
     ['AbortError', ErrorCode.ABORTED],
+    ['InvalidSignatureException', ErrorCode.ACCESS_DENIED],
+    ['RequestTimeTooSkewed', ErrorCode.ACCESS_DENIED],
+    ['CredentialsProviderError', ErrorCode.ACCESS_DENIED],
   ])('maps %s to %s', (name, code) => {
     expect(classifyAwsError(sdkError(name))).toBe(code);
+  });
+
+  /**
+   * The SDK's own rule, kept here because this library turns the SDK's retries
+   * off: a signature refused for a clock the SDK then corrected, and a
+   * signature it reports expired, succeed on the next attempt — a host whose
+   * clock drifts past four minutes would otherwise fail its first request
+   * where a stock client recovers.
+   */
+  it('reads a signing failure the SDK corrected its clock for as transient', () => {
+    const corrected = sdkError('AccessDeniedException', {
+      httpStatusCode: 403,
+      clockSkewCorrected: true,
+    });
+    expect(classifyAwsError(corrected)).toBe(ErrorCode.SERVICE_UNAVAILABLE);
+    const expired = Object.assign(sdkError('InvalidSignatureException'), {
+      message: 'Signature expired: 20231114T221320Z is now earlier than 20261001T021824Z',
+    });
+    expect(classifyAwsError(expired)).toBe(ErrorCode.SERVICE_UNAVAILABLE);
+  });
+
+  /** A provider chain that yields no credentials is a credential fault, not a bug in this package. */
+  it('reads a failed credential resolution as a refused identity', () => {
+    const error = Object.assign(new Error('Could not load credentials from any providers'), {
+      name: 'CredentialsProviderError',
+    });
+    expect(classifyAwsError(error)).toBe(ErrorCode.ACCESS_DENIED);
   });
 
   it('classifies a cancellation by its reasons', () => {
@@ -102,6 +133,20 @@ describe('classifyAwsError', () => {
     expect(classifyAwsError(Object.assign(new Error('x'), { name: 'toString' }))).toBe(
       ErrorCode.UNEXPECTED_ERROR,
     );
+  });
+});
+
+describe('isCorrectedClockSkew', () => {
+  it('reads the corrected-skew mark and the expired-signature message, nothing else', () => {
+    expect(isCorrectedClockSkew({ $metadata: { clockSkewCorrected: true } })).toBe(true);
+    expect(
+      isCorrectedClockSkew({ name: 'InvalidSignatureException', message: 'Signature expired: …' }),
+    ).toBe(true);
+    expect(isCorrectedClockSkew({ name: 'InvalidSignatureException', message: 'mismatch' })).toBe(
+      false,
+    );
+    expect(isCorrectedClockSkew({ name: 'AccessDeniedException', $metadata: {} })).toBe(false);
+    expect(isCorrectedClockSkew({})).toBe(false);
   });
 });
 

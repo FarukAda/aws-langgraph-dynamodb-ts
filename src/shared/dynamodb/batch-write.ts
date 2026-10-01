@@ -12,9 +12,9 @@ import { batchWriteAllIncompleteError, batchWriteIncompleteError } from '../erro
 import { isAbortError } from './abort.js';
 import type { DynamoDBDocumentLike, WriteRequest } from './client.js';
 import {
+  backoffCapMs,
   fullJitter,
   INITIAL_BACKOFF_DELAY_MS,
-  MAX_BACKOFF_DELAY_MS,
   nextBackoffDelay,
   sleep,
   type RetryOptions,
@@ -121,10 +121,11 @@ export interface DrainOptions {
  * one path, breaking the documented "one policy governs every wait".
  */
 function drainBackoff(retry?: RetryOptions): { base: number; max: number } {
-  return {
-    base: retry?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
-    max: retry?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
-  };
+  const base = retry?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS;
+  const max = backoffCapMs(base, retry?.maxDelayMs);
+  // The cap bounds the first wait too: a policy that only lowers it sits
+  // below the default base.
+  return { base: Math.min(base, max), max };
 }
 
 /**

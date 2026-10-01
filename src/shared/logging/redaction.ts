@@ -49,6 +49,28 @@ function assertRegExpArray(value: readonly RegExp[], field: string): void {
 }
 
 /**
+ * Reject a list of key names this package could not match.
+ *
+ * Accepts: `value` — the list as the caller gave it. `field` — what the error
+ * names.
+ *
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it. An empty list is valid, and is how a caller turns key matching
+ * off.
+ *
+ * Throws: `VALIDATION` naming `field` for a non-array, an entry that is not a
+ * string, or an entry with no letter or digit in it: such a name normalises to
+ * the empty string, which every key ends with, so it would redact every value
+ * of every argument while the caller believed it named one key.
+ */
+function assertKeyPatterns(value: readonly string[], field: string): void {
+  assertStringArray(value, field);
+  if (value.some((entry) => normaliseKey(entry) === '')) {
+    throw validationError(`${field} must name a letter or digit in every entry`, field);
+  }
+}
+
+/**
  * Recursively clone `value`, replacing any value at a secret-looking key with
  * `[REDACTED]` and any recognised secret *shape* inside a string — including an
  * error's `message`/`stack` text, which key-name matching cannot reach — with
@@ -67,15 +89,19 @@ function assertRegExpArray(value: readonly RegExp[], field: string): void {
  * cyclic or shared graph is fine; each node is walked once. `patterns` and
  * `valuePatterns` — the key names and value shapes to redact, an array of
  * strings and an array of `RegExp` respectively; both default to this
- * package's own lists, and an empty one turns that rule off.
+ * package's own lists, and an empty one turns that rule off. A key name is
+ * matched by its normalised form — lower-case, punctuation removed — against
+ * the end of each key's, so `'apiKey'` covers `x-api-key` and `API_KEY`.
  *
  * Returns: a redacted clone. The input is never mutated — a logger that
  * scrubbed the caller's own object would corrupt the very data the application
  * is working with.
  *
  * Throws: `VALIDATION` naming `patterns` or `valuePatterns` for a list this
- * function could not apply, which is a mistake in the call itself and is
- * raised before anything is walked. Nothing after that: a value whose
+ * function could not apply — a non-array, a wrong entry, or a key name with
+ * no letter or digit in it, which would match every key — which is a mistake
+ * in the call itself and is raised before anything is walked. Nothing after
+ * that: a value whose
  * redaction fails — a throwing getter, a structure deep enough to exhaust the
  * stack — is replaced whole by `[UNREDACTABLE]`, since a logger that throws
  * takes down the operation it was only observing. {@link redactLogger}
@@ -87,8 +113,9 @@ export function redactSecrets(
   patterns: readonly string[] = DEFAULT_SECRET_KEY_PATTERNS,
   valuePatterns: readonly RegExp[] = DEFAULT_SECRET_VALUE_PATTERNS,
 ): Redactable {
-  assertStringArray(patterns, 'patterns');
+  assertKeyPatterns(patterns, 'patterns');
   assertRegExpArray(valuePatterns, 'valuePatterns');
+  const keyPatterns = patterns.map(normaliseKey);
   // `walking` detects a cycle; `done` memoises a finished node. Both are
   // needed and they answer different questions. A guard that only removed a
   // node when its subtree finished is correct for cycles but re-walks every
@@ -105,7 +132,7 @@ export function redactSecrets(
     if (walking.has(current)) return '[Circular]';
     walking.add(current);
     try {
-      const redacted = walkObject(current, { keyPatterns: patterns, valuePatterns, walk });
+      const redacted = walkObject(current, { keyPatterns, valuePatterns, walk });
       done.set(current, redacted);
       return redacted;
     } finally {
@@ -144,13 +171,14 @@ export interface RedactLoggerOptions {
 /**
  * Reject redaction options that would silently fail to redact.
  *
- * A non-string in `extraKeys` reached `key.toLowerCase()` and raised a bare
- * `TypeError` at the first log call; a non-`RegExp` in `extraValuePatterns` is
- * skipped by {@link redactText} and would have protected nothing while the
- * caller believed it did. An `options` that is not an object at all carried no
- * rule to begin with, and was read as "none given", leaving the caller running
- * on a default it believed it had overridden. All three are refused here,
- * once, where they are configured.
+ * A non-string in `extraKeys` would reach `key.toLowerCase()` and raise a bare
+ * `TypeError` at the first log call, and an entry with no letter or digit
+ * would normalise to the empty string and redact every value; a non-`RegExp`
+ * in `extraValuePatterns` is skipped by {@link redactText} and would protect
+ * nothing while the caller believed it did. An `options` that is not an object
+ * at all carries no rule to begin with, and read as "none given" would leave
+ * the caller running on a default it believed it had overridden. All of them
+ * are refused here, once, where they are configured.
  *
  * Accepts: `options` — as the caller gave it.
  *
@@ -161,7 +189,7 @@ export interface RedactLoggerOptions {
  */
 function assertRedactionOptions(options: RedactLoggerOptions): void {
   assertObjectShape(options, 'options');
-  if (options.extraKeys !== undefined) assertStringArray(options.extraKeys, 'extraKeys');
+  if (options.extraKeys !== undefined) assertKeyPatterns(options.extraKeys, 'extraKeys');
   if (options.extraValuePatterns !== undefined) {
     assertRegExpArray(options.extraValuePatterns, 'extraValuePatterns');
   }

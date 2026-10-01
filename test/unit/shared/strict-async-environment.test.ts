@@ -20,6 +20,8 @@ interface JsonReport {
 }
 
 const repoRoot = join(__dirname, '..', '..', '..');
+/** Under the hook's own 120 s, so the hook reports a hang rather than timing out itself. */
+const NESTED_RUN_TIMEOUT_MS = 110_000;
 
 function runFixtures(): Map<string, AssertionResult> {
   const run = spawnSync(
@@ -34,8 +36,15 @@ function runFixtures(): Map<string, AssertionResult> {
       '--runInBand',
       '--json',
     ],
-    { cwd: repoRoot, encoding: 'utf8' },
+    // A bound of its own: jest's hook timeout cannot interrupt a synchronous
+    // spawn, so a nested run that hung would hang this suite with it.
+    { cwd: repoRoot, encoding: 'utf8', timeout: NESTED_RUN_TIMEOUT_MS, killSignal: 'SIGKILL' },
   );
+  if (run.error !== undefined || run.status === null) {
+    throw new Error(
+      `the nested jest run did not finish: ${run.error?.message ?? `signal ${String(run.signal)}`}`,
+    );
+  }
   const report = JSON.parse(run.stdout) as JsonReport;
   const byTitle = new Map<string, AssertionResult>();
   for (const file of report.testResults) {

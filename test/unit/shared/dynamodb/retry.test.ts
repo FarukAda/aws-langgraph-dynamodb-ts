@@ -121,6 +121,50 @@ describe("withRetry's RETRY_EXHAUSTED records whether any attempt may still land
     expect(retryBudgetMayStillLand(thrown as Error)).toBe(true);
   });
 
+  /**
+   * A refusal ends the budget without a `RETRY_EXHAUSTED` wrapper, and the
+   * attempt before it may still be applied: static credentials that expire
+   * mid-budget turn attempt 2 into `ExpiredTokenException` after attempt 1 was
+   * cut without an answer. The record has to travel on the error that is
+   * actually thrown, or every caller reads the refusal as "applied nothing"
+   * and releases what attempt 1 may yet land.
+   */
+  it('records it on a refusal that ends the budget after an unanswered attempt, too', async () => {
+    let calls = 0;
+    let thrown: Error | undefined;
+    try {
+      await withRetry(
+        () => {
+          calls += 1;
+          throw calls === 1
+            ? transportTimeout()
+            : Object.assign(new Error('expired'), {
+                name: 'ExpiredTokenException',
+                $metadata: { httpStatusCode: 400 },
+              });
+        },
+        { maxAttempts: 3, rng: () => 0, baseDelayMs: 0 },
+      );
+    } catch (error) {
+      thrown = error as Error;
+    }
+    expect(calls).toBe(2);
+    expect(thrown?.name).toBe('ExpiredTokenException');
+    expect(retryBudgetMayStillLand(thrown as Error)).toBe(true);
+  });
+
+  it("leaves a refusal that was the budget's only attempt unmarked", async () => {
+    const refused = Object.assign(new Error('expired'), {
+      name: 'ExpiredTokenException',
+      $metadata: { httpStatusCode: 400 },
+    });
+    const thrown = await withRetry(() => Promise.reject(refused), { maxAttempts: 3 }).catch(
+      (error: Error) => error,
+    );
+    expect(thrown).toBe(refused);
+    expect(retryBudgetMayStillLand(thrown)).toBe(false);
+  });
+
   it('is false when every attempt of the budget was answered definitely', async () => {
     let thrown: Error | undefined;
     try {
@@ -201,6 +245,64 @@ describe('withRetry onRetry hook', () => {
       { attempt: 1, delayMs: 10, error: failing },
       { attempt: 2, delayMs: 20, error: failing },
     ]);
+  });
+
+  /**
+   * The hook reports the delay "about to be slept"; this pins that the sleep
+   * then happens, for exactly that long, between the two attempts — a retry
+   * loop that reported a delay and went straight on would pass the test above.
+   */
+  it('sleeps the delay it reports before the next attempt', async () => {
+    jest.useFakeTimers();
+    try {
+      let calls = 0;
+      const pending = withRetry(
+        async () => {
+          calls += 1;
+          if (calls < 2) throw retryable();
+          return Promise.resolve('ok');
+        },
+        { rng: () => 1, baseDelayMs: 50, maxAttempts: 3 },
+      );
+      await jest.advanceTimersByTimeAsync(49);
+      expect(calls).toBe(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(calls).toBe(2);
+      await expect(pending).resolves.toBe('ok');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  /**
+   * A base above the default cap, given without a cap of its own, is the delay
+   * the caller asked for. Left under the default cap, every sleep would be cut
+   * to five seconds and the option would be accepted while doing nothing.
+   */
+  it('raises the default cap to a base delay given above it', async () => {
+    const controller = new AbortController();
+    const onRetry = jest.fn(() => controller.abort());
+    const failing = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    await withRetry(
+      () => {
+        throw failing;
+      },
+      { rng: () => 1, baseDelayMs: 20_000, onRetry, signal: controller.signal },
+    ).catch(() => undefined);
+    expect(onRetry).toHaveBeenCalledWith({ attempt: 1, delayMs: 20_000, error: failing });
+  });
+
+  it('keeps a cap the caller names, below the base or not', async () => {
+    const controller = new AbortController();
+    const onRetry = jest.fn(() => controller.abort());
+    const failing = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    await withRetry(
+      () => {
+        throw failing;
+      },
+      { rng: () => 1, baseDelayMs: 20_000, maxDelayMs: 7, onRetry, signal: controller.signal },
+    ).catch(() => undefined);
+    expect(onRetry).toHaveBeenCalledWith({ attempt: 1, delayMs: 7, error: failing });
   });
 });
 

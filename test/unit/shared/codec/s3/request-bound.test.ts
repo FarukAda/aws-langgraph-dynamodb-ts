@@ -104,14 +104,28 @@ describe('the request-handler bound on an S3 client this library builds', () => 
 
   /**
    * The documented escape hatch, and equally the documented way to give the
-   * bound up: `config` spreads last, exactly as `maxAttempts` already behaves,
-   * so a caller's own handler replaces this default whole rather than merging
-   * with it.
+   * bound up: a handler the config gives wins, exactly as its `maxAttempts`
+   * does, and replaces this default whole rather than merging with it.
    */
   it("lets a caller's own requestHandler replace the default wholesale", async () => {
     expect(await builtFrom({ requestHandler: { requestTimeout: 111 } })).toEqual({
       maxAttempts: 1,
       requestHandler: { requestTimeout: 111 },
+    });
+  });
+
+  /**
+   * A config assembled from optional settings names the key and leaves its
+   * value undefined. That names no override, and spread over the defaults it
+   * would take both away: the SDK's own retries would stack inside this
+   * library's, over a transfer nothing bounds.
+   */
+  it('keeps both defaults when the config names them as undefined', async () => {
+    const config = { region: 'us-east-1', maxAttempts: undefined, requestHandler: undefined };
+    expect(await builtFrom(config)).toEqual({
+      maxAttempts: 1,
+      region: 'us-east-1',
+      requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
     });
   });
 
@@ -147,9 +161,9 @@ describe('the same bound on an injected S3 client factory', () => {
   /**
    * A caller who passes `createS3Client` is supplying a constructor, not a
    * configuration — they have not opted out of the bound — so the injected
-   * path must hand over the same default as the built-in one. Nothing else
-   * makes these two agree, so the assertion is written out rather than shared
-   * with the built-in path's.
+   * path must hand over the same default as the built-in one. The assertion
+   * is written out rather than shared with the built-in path's, so a path that
+   * stops applying the defaults fails on its own.
    */
   it('hands an injected factory the same request handler as the built-in path', async () => {
     const createS3Client = jest.fn(fakeClient);
@@ -162,7 +176,7 @@ describe('the same bound on an injected S3 client factory', () => {
     offloader.destroy();
   });
 
-  /** The same escape hatch on the same spread order, one path over. */
+  /** The same escape hatch, one path over. */
   it("lets a caller's own requestHandler replace it on the injected path too", async () => {
     const createS3Client = jest.fn(fakeClient);
     const offloader = new S3Offloader({
@@ -174,6 +188,22 @@ describe('the same bound on an injected S3 client factory', () => {
     expect(createS3Client).toHaveBeenCalledWith({
       maxAttempts: 1,
       requestHandler: { requestTimeout: 222 },
+    });
+    offloader.destroy();
+  });
+
+  /** And the same defaults for a key named without a value, one path over. */
+  it('keeps both defaults on the injected path when clientConfig names them as undefined', async () => {
+    const createS3Client = jest.fn(fakeClient);
+    const offloader = new S3Offloader({
+      bucketName: 'b',
+      clientConfig: { maxAttempts: undefined, requestHandler: undefined },
+      createS3Client,
+    });
+    await offloader.deleteBatch([]);
+    expect(createS3Client).toHaveBeenCalledWith({
+      maxAttempts: 1,
+      requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
     });
     offloader.destroy();
   });

@@ -230,7 +230,11 @@ export async function* iterateRecencyIndex(
   } while (cursor !== undefined);
 }
 
-/** The adapter tags that scope GSI1, matching the partition-key tags. */
+/**
+ * The adapter tags that scope GSI1: the checkpointer's own partition tag, and
+ * `SESS` for the history's session rows — not its `HIST` partition tag, which
+ * names a whole conversation where this index lists one row of it.
+ */
 export type IndexTag = 'CHKPT' | 'SESS';
 
 /** How a row appears in the recency index: its adapter's tag, its identity, and its time. */
@@ -256,10 +260,16 @@ export function backfilledAt(recorded: AttributeMap[string]): string {
   return typeof recorded === 'string' ? recorded : BACKFILLED_AT;
 }
 
+/** The index's partition-key attribute: `<tag>#<shard>`, the one name every writer, the backfill and the listing spell. */
+export const INDEX_PARTITION_ATTRIBUTE = 'gsi1pk';
+
+/** The index's sort-key attribute: `<updatedAt>#<id>`, or the digest form past the sort-key cap. */
+export const INDEX_SORT_ATTRIBUTE = 'gsi1sk';
+
 /** The two attributes a row carries to appear in GSI1. */
 export interface IndexKeys {
-  gsi1pk: string;
-  gsi1sk: string;
+  [INDEX_PARTITION_ATTRIBUTE]: string;
+  [INDEX_SORT_ATTRIBUTE]: string;
 }
 
 /** Default number of index partitions per adapter. */
@@ -439,8 +449,8 @@ function shardQuery(
     IndexName: options.indexName,
     KeyConditionExpression: before === undefined ? '#pk = :pk' : '#pk = :pk AND #sk < :before',
     ExpressionAttributeNames: {
-      '#pk': 'gsi1pk',
-      ...(before === undefined ? {} : { '#sk': 'gsi1sk' }),
+      '#pk': INDEX_PARTITION_ATTRIBUTE,
+      ...(before === undefined ? {} : { '#sk': INDEX_SORT_ATTRIBUTE }),
     },
     ExpressionAttributeValues: {
       ':pk': reader.partition,

@@ -317,8 +317,21 @@ function describeThrown(value: Error): string {
  * discard the failure being reported and replace it with its own.
  */
 export function toError(value: Error): Error {
-  if (value !== null && typeof value === 'object' && typeof value.message === 'string') {
-    return value;
-  }
+  if (value !== null && typeof value === 'object' && messageOf(value) !== undefined) return value;
   return new Error(describeThrown(value));
+}
+
+/**
+ * The string `message` an object carries, or `undefined` when it carries none
+ * — or when reading it throws, as a getter of the caller's own can: a value
+ * whose message cannot be read is not error-shaped for any purpose here, and
+ * is described instead.
+ */
+function messageOf(value: object): string | undefined {
+  try {
+    const { message } = value as { message?: string };
+    return typeof message === 'string' ? message : undefined;
+  } catch {
+    return undefined;
+  }
 }

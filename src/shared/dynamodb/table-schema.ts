@@ -35,11 +35,22 @@ export const SORT_KEY_ATTRIBUTE = 'SK';
 export const MAX_PARTITION_ID_BYTES = 1024;
 
 /**
- * Sort-key segments other than the checkpoint namespace: `checkpoint_id`,
- * `taskId`, a pending-write channel, a store namespace element and a store
+ * Sort-key segments other than the checkpoint namespace and a pending-write
+ * channel: `checkpoint_id`, `taskId`, a store namespace element and a store
  * `key`.
  */
 export const MAX_KEY_SEGMENT_BYTES = 256;
+
+/**
+ * A pending-write channel's own cap. Every other segment is one identifier,
+ * but LangGraph names the channel behind a static fan-in after every source
+ * node — `join:<a>+<b>+…:<end>` — so a channel is as long as a graph's node
+ * names together, and nine sources with ordinary names pass 256 bytes. The
+ * channel is the last segment of the WRITE sort key, so DynamoDB's cap on the
+ * whole key is the bound that matters, and the composed-key check enforces it
+ * against the namespace, checkpoint id and task id the channel sits behind.
+ */
+export const MAX_WRITE_CHANNEL_BYTES = 1024;
 
 /**
  * The checkpoint namespace's own cap. LangGraph names a subgraph's namespace
@@ -150,19 +161,6 @@ export function assertReadableRow(row: VersionedRow, what: string): void {
     ErrorCode.FORMAT_UNSUPPORTED,
     { field: 'v' },
   );
-}
-
-/**
- * The item with this release's format version stamped on it.
- *
- * Accepts: `item` — any item about to be written; an existing `v` is replaced.
- *
- * Returns: a copy carrying `v`, leaving the input untouched.
- *
- * Throws: nothing.
- */
-export function withRowVersion<T extends AttributeMap>(item: T): T & { v: number } {
-  return { ...item, v: ROW_FORMAT_VERSION };
 }
 
 /**

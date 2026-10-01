@@ -1,3 +1,4 @@
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 
@@ -94,6 +95,32 @@ describe('redactSecrets', () => {
     const result = redactSecrets({ a: err, b: err }) as { a: unknown; b: unknown };
     expect(result.a).toBe(err);
     expect(result.b).toBe(err);
+  });
+});
+
+describe('redactSecrets key patterns', () => {
+  /**
+   * The documented matching is on the normalised name, and `redactLogger`
+   * normalises its `extraKeys` the same way; a caller naming `apiKey` here
+   * got no redaction at all while believing they had asked for one.
+   */
+  it('matches a key pattern by its normalised form, as the defaults are matched', () => {
+    expect(redactSecrets({ apiKey: 'k', other: 1 }, ['apiKey'])).toEqual({
+      apiKey: '[REDACTED]',
+      other: 1,
+    });
+    expect(redactSecrets({ 'x-api-key': 'k' }, ['API_KEY'])).toEqual({ 'x-api-key': '[REDACTED]' });
+  });
+
+  /** Every normalised key ends with the empty string, so such a pattern redacts everything. */
+  it('refuses a pattern that normalises to nothing, naming it', () => {
+    expect(() => redactSecrets({ a: 1 }, ['-'])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'patterns' } }),
+    );
+    const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    expect(() => redactLogger(inner, { extraKeys: [''] })).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'extraKeys' } }),
+    );
   });
 });
 
@@ -298,6 +325,27 @@ describe('credential-value redaction', () => {
     );
   });
 
+  /** A JSON body quoted inside another JSON string, as a logged HTTP error carries it. */
+  it('redacts a pair inside doubly encoded JSON, keeping the sibling fields', () => {
+    expect(redactSecrets('"{\\"password\\":\\"hunter2\\",\\"region\\":\\"x\\"}"')).toBe(
+      '"{\\"password\\":[REDACTED],\\"region\\":\\"x\\"}"',
+    );
+  });
+
+  it('redacts the hyphenated and spaced spellings of an api key in free text', () => {
+    expect(redactSecrets('x-api-key: sk-abc123')).toBe('x-api-key: [REDACTED]');
+    expect(redactSecrets('api-key=abc123')).toBe('api-key=[REDACTED]');
+    expect(redactSecrets("headers: { 'x-api-key': 'sk-abc123' }")).toBe(
+      "headers: { 'x-api-key': [REDACTED] }",
+    );
+  });
+
+  it('redacts a secret key and a client secret in free text', () => {
+    expect(redactSecrets('secret_key=abc123 other')).toBe('secret_key=[REDACTED]');
+    expect(redactSecrets('secretKey: "abc"')).toBe('secretKey: [REDACTED]');
+    expect(redactSecrets('client_secret=abc123')).toBe('client_secret=[REDACTED]');
+  });
+
   it('reaches a secret inside an Error message via the rebuild path', () => {
     const error = Object.assign(new Error('failed {"password":"hunter2"}'), { code: 'X' });
     const redacted = redactSecrets(error) as { message: string };
@@ -305,7 +353,7 @@ describe('credential-value redaction', () => {
   });
 });
 
-describe('scalar values end at a real delimiter (F2 follow-up)', () => {
+describe('scalar values end at a real delimiter, never at a space', () => {
   it('redacts a free-text value whole, treating a space as no delimiter at all', () => {
     // A space is not a JSON delimiter. Accepting one let the scalar alternative
     // claim `5` and leave ` items` behind, which reads as a partial redaction.

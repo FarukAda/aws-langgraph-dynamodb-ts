@@ -18,10 +18,12 @@ import type { ErrorContext } from './base-error.js';
 import { ErrorCode } from './error-code.js';
 
 /** The fields an AWS SDK v3 error, or a transport error under it, can carry. */
-interface AwsErrorFields {
+/** The fields of an SDK error this module reads; exported for the retry layer's own walk. */
+export interface AwsErrorFields {
   name?: string;
   code?: string;
-  $metadata?: { httpStatusCode?: number; requestId?: string } | null;
+  message?: string;
+  $metadata?: { httpStatusCode?: number; requestId?: string; clockSkewCorrected?: boolean } | null;
 }
 
 /**
@@ -90,10 +92,18 @@ export const AWS_ERROR_CODES: Readonly<Record<string, ErrorCode>> = {
   IncompleteSignature: ErrorCode.ACCESS_DENIED,
   IncompleteSignatureException: ErrorCode.ACCESS_DENIED,
   InvalidAccessKeyId: ErrorCode.ACCESS_DENIED,
+  InvalidSignatureException: ErrorCode.ACCESS_DENIED,
   MissingAuthenticationTokenException: ErrorCode.ACCESS_DENIED,
   NotAuthorized: ErrorCode.ACCESS_DENIED,
+  RequestTimeTooSkewed: ErrorCode.ACCESS_DENIED,
   SignatureDoesNotMatch: ErrorCode.ACCESS_DENIED,
   UnrecognizedClientException: ErrorCode.ACCESS_DENIED,
+  /**
+   * The SDK's credential chain found no credentials at all, so no request was
+   * signed, let alone sent: a credential fault to fix, not a defect in this
+   * package or a failure of AWS's.
+   */
+  CredentialsProviderError: ErrorCode.ACCESS_DENIED,
 
   ResourceNotFoundException: ErrorCode.NOT_FOUND,
   NoSuchBucket: ErrorCode.NOT_FOUND,
@@ -154,6 +164,30 @@ function declaredCodeOf(name: string | undefined): ErrorCode | undefined {
     : undefined;
 }
 
+/**
+ * Whether the SDK itself would retry this signing failure.
+ *
+ * Accepts: `fields` — an error's own fields, as the SDK sets them.
+ *
+ * Returns: true when the SDK corrected its clock offset on the response
+ * (`$metadata.clockSkewCorrected`, set once the skew passes four minutes), or
+ * the service reports the signature expired (`InvalidSignatureException`
+ * saying so) — the SDK's own `isTransientError`, kept here because this
+ * package switches the SDK's retries off and would otherwise fail a host
+ * whose clock drifts on its first request, where a stock client recovers on
+ * the next.
+ *
+ * Throws: nothing.
+ */
+export function isCorrectedClockSkew(fields: AwsErrorFields): boolean {
+  if (fields.$metadata?.clockSkewCorrected === true) return true;
+  return (
+    fields.name === 'InvalidSignatureException' &&
+    typeof fields.message === 'string' &&
+    fields.message.includes('Signature expired')
+  );
+}
+
 /** The response's HTTP status, when the error carries well-typed `$metadata`. */
 function statusOf(fields: AwsErrorFields): number | undefined {
   const metadata = fields.$metadata;
@@ -190,7 +224,9 @@ function cancellationCode(error: Error): ErrorCode {
  *
  * Returns: a transaction cancellation's code from its reasons (a sole
  * `ConditionalCheckFailed` cause is `CONDITION_CONFLICT`; all-transient causes
- * are `THROTTLED` or `CONTENTION`); otherwise the table's code for the error's
+ * are `THROTTLED` or `CONTENTION`); otherwise `SERVICE_UNAVAILABLE` for a
+ * signing failure the SDK corrected its clock for or reports expired
+ * ({@link isCorrectedClockSkew}); otherwise the table's code for the error's
  * own `name`; otherwise `SERVICE_UNAVAILABLE` for a transient network `code`;
  * otherwise by HTTP status — 412 `CONDITION_CONFLICT`, 429 `THROTTLED`,
  * 500/502/503/504 `SERVICE_UNAVAILABLE`; otherwise `AWS_REQUEST_FAILED` for an
@@ -203,6 +239,7 @@ export function classifyAwsError(error: Error): ErrorCode {
   if (typeof error !== 'object' || error === null) return ErrorCode.UNEXPECTED_ERROR;
   const fields = error as AwsErrorFields;
   if (fields.name === TRANSACTION_CANCELLED) return cancellationCode(error);
+  if (isCorrectedClockSkew(fields)) return ErrorCode.SERVICE_UNAVAILABLE;
   const declared = declaredCodeOf(fields.name);
   if (declared !== undefined) return declared;
   if (typeof fields.code === 'string' && TRANSIENT_NETWORK_ERROR_CODES.includes(fields.code)) {
@@ -217,8 +254,13 @@ export function classifyAwsError(error: Error): ErrorCode {
   return isAwsShaped(fields) ? ErrorCode.AWS_REQUEST_FAILED : ErrorCode.UNEXPECTED_ERROR;
 }
 
-/** How far {@link classifiableCause} walks a cause chain before giving up. */
-const MAX_CAUSE_DEPTH = 32;
+/**
+ * How far a walk down a cause chain goes before giving up: deep enough for
+ * any chain a real failure builds, and a bound in case a `cause` loops
+ * through objects a `Set` of seen nodes cannot pair. Shared by
+ * {@link classifiableCause} and the retry layer's own walk.
+ */
+export const MAX_CAUSE_DEPTH = 32;
 
 /** The one field {@link classifiableCause} reads off a node while walking its cause chain. */
 interface CauseChain {

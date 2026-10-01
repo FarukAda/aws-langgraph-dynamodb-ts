@@ -25,6 +25,14 @@ const THROWN: readonly unknown[] = [
   [],
   () => 1,
   Object.create(null) as object,
+  // A caller's `toJSON`, or a proxy, can throw from the very property these
+  // functions read first; a function run from inside a `catch` has to survive
+  // that too, or it replaces the failure being reported with its own.
+  {
+    get message(): string {
+      throw new RangeError('hostile getter');
+    },
+  },
 ];
 
 /** Run `probe` over every thrown value, returning the ones that made it throw. */
