@@ -75,7 +75,7 @@ summarises every method in one table per class.
 
 ## Why it is built this way
 
-- [Decision records](decisions/README.md) — 24 records of decisions that are
+- [Decision records](decisions/README.md) — 29 records of decisions that are
   expensive to reverse: what the situation was, what was decided, and what it
   costs.
 - [Evidence](evidence/README.md) — 17 claims about DynamoDB or S3 behaviour
@@ -97,8 +97,8 @@ up afterwards.
 [SUPPORT.md](../SUPPORT.md) says where to ask questions;
 [SECURITY.md](../SECURITY.md) covers reporting a vulnerability;
 [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) sets expectations for the
-project's spaces; and [CHANGELOG.md](../CHANGELOG.md) lists every released
-change.
+project's spaces; and [CHANGELOG.md](../CHANGELOG.md) lists every notable
+change, by release and under `[Unreleased]` for what the next one carries.
 
 ## How these documents are kept true
 

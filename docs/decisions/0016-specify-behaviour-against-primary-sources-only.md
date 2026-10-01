@@ -12,8 +12,9 @@ faster than establishing it directly. It is also unreliable: a number
 copied without its source cannot be re-derived when the service changes,
 and a behaviour copied from another implementation may be that
 implementation's own bug rather than a fact about the service. DynamoDB
-Local, which the unit and integration tiers run against for speed, is
-itself such a source to be wary of: `transactIdempotently`'s own doc
+Local, which the integration, contract and conformance tiers run against
+for speed (the unit tier mocks the client), is itself such a source to be
+wary of: `transactIdempotently`'s own doc
 comment (`src/shared/dynamodb/idempotent-write.ts`) records that the
 `IdempotentParameterMismatchException` a cancelled token's reused
 parameters draw against real DynamoDB is "only observable against real

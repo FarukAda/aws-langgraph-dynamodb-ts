@@ -10,8 +10,8 @@ Accepted.
 types, but a contract in prose leaves edge cases unsettled: what a listing
 does with a namespace prefix that matches no items, what a search does with
 a filter naming a field no stored value has, what a falsy checkpoint id
-means. `@langchain/langgraph-checkpoint`'s `MemorySaver` and
-`@langchain/core`'s `InMemoryStore` are executable answers to exactly those
+means. `@langchain/langgraph-checkpoint`'s `MemorySaver` and its
+`InMemoryStore` are executable answers to exactly those
 questions, and LangGraph applications are written and tested against them
 before a persistent backend ever enters the picture. A backend that answers
 one of these questions differently, without saying so, changes what an
@@ -29,8 +29,9 @@ actually stores rows.
 
 We specify this package's observable behaviour as what `MemorySaver` and
 `InMemoryStore` do, and list every place it diverges as a numbered `V-`row
-in the README's *Differences from the reference implementations* table,
-each naming why the difference is kept. Anything not in that table is
+in the guide's *Differences from the reference implementations* table, which
+the README's section of that name summarises and links to, each naming why
+the difference is kept. Anything not in that table is
 treated as a defect against the reference, not a choice, and the
 differential and conformance tests
 (`test/conformance/checkpointer.conformance.test.ts`,

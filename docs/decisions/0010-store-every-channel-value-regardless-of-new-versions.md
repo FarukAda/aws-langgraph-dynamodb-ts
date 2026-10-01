@@ -26,10 +26,12 @@ inefficiently.
 ## Decision
 
 We store every channel value a checkpoint carries and ignore `newVersions`
-entirely. `putCheckpoint` (`src/checkpointer/actions/put.ts`) accepts the
+entirely. `DynamoDBSaver.put` (`src/checkpointer/saver.ts`) accepts the
 parameter, because `BaseCheckpointSaver.put` declares it and a saver must
-match that signature, and never reads it. This is recorded as V-10 in the
-README's *Differences from the reference implementations* table, and
+match that signature, and does not hand it on: `putCheckpoint`
+(`src/checkpointer/actions/put.ts`) has no such parameter. This is recorded
+as V-10 in the guide's *Differences from the reference implementations*
+table, and
 `test/conformance/validation.conformance.test.ts` — which runs LangChain's
 own published checkpointer validation suite — skips that suite's one test
 for storing only the channels `newVersions` names, under the same
