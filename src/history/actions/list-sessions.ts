@@ -154,7 +154,7 @@ async function allByScan(
  * shards are queried at once. Memory is the page being built, up to `limit`
  * rows and so bounded by the page ceiling, plus at most one DynamoDB page per shard,
  * whatever the table holds. Without one it is a filtered table scan that holds
- * every session at once and returns no cursor, as earlier releases did.
+ * every session at once and returns no cursor.
  */
 export async function listSessions(
   context: HistoryContext,

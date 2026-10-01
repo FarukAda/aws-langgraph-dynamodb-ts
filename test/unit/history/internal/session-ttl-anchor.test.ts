@@ -27,12 +27,19 @@ describe('resolveTtlAnchor', () => {
     });
   });
 
-  it('falls back to the candidate and requests a refresh when the stored ttl has already passed', async () => {
+  /**
+   * An expired anchor is a dead incarnation of the session: every reader
+   * already hides it. The value is handed back so the append that heals it
+   * can start the session over under a pin on exactly that anchor, rather
+   * than add its messages to a conversation nobody can read any more.
+   */
+  it('names the expired anchor it found, so the append can start the session over under it', async () => {
     const past = Math.floor(Date.now() / 1000) - 100;
     const context = contextWith({ Item: { ttl: past } });
     await expect(resolveTtlAnchor(context, SESSION_ID, 9999999999)).resolves.toEqual({
       ttlTimestamp: 9999999999,
       refresh: true,
+      expiredAnchor: past,
     });
   });
 

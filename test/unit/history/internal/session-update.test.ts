@@ -57,6 +57,18 @@ describe('buildSessionUpdate', () => {
     expect(Update?.ExpressionAttributeValues?.[':wid']).toBe('W1');
   });
 
+  /** 1 of the default 8 shards for this id, 0 of 3: the configured count reaches the key. */
+  it('shards the session row by indexShards, defaulting to 8', () => {
+    const fields = { sessionId: 's1', count: 1, now: 'u', writeId: 'W1' };
+    expect(buildSessionUpdate('history', fields).Update?.ExpressionAttributeValues?.[':gpk']).toBe(
+      'SESS#1',
+    );
+    expect(
+      buildSessionUpdate('history', { ...fields, indexShards: 3 }).Update
+        ?.ExpressionAttributeValues?.[':gpk'],
+    ).toBe('SESS#0');
+  });
+
   it('appends a title clause when a title is given', () => {
     const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
@@ -145,6 +157,51 @@ describe('buildSessionUpdate', () => {
       writeId: 'W1',
     });
     expect(noTtl.Update?.ConditionExpression).toBeUndefined();
+  });
+
+  /**
+   * A session whose anchor has expired is dead to every reader, so an append
+   * that heals it starts the session over: its count, creation time and title
+   * are this append's, not the dead incarnation's, and the write is pinned to
+   * the expired anchor it observed, so a concurrent append that restarted the
+   * session first keeps its count and this one adds to it on its retry.
+   */
+  it('starts the session over, pinned to the expired anchor, when restart names one', () => {
+    const { Update } = buildSessionUpdate('history', {
+      sessionId: 's1',
+      count: 2,
+      now: 'u',
+      writeId: 'W1',
+      title: 'fresh',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+      restart: 1234,
+    });
+    expect(Update?.UpdateExpression).toMatch(/^SET /);
+    expect(Update?.UpdateExpression).toContain('#count = :n');
+    expect(Update?.UpdateExpression).not.toContain('ADD');
+    expect(Update?.UpdateExpression).toContain('#c = :c');
+    expect(Update?.UpdateExpression).not.toContain('if_not_exists');
+    expect(Update?.UpdateExpression).toContain('#title = :title');
+    expect(Update?.UpdateExpression).toContain('#ttl = :ttl');
+    expect(Update?.ConditionExpression).toBe('#ttl = :expired');
+    expect(Update?.ExpressionAttributeValues?.[':expired']).toBe(1234);
+    expect(Update?.ExpressionAttributeValues?.[':n']).toBe(2);
+  });
+
+  it("removes the dead incarnation's title on a restart that derives none", () => {
+    const { Update } = buildSessionUpdate('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      writeId: 'W1',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+      restart: 1234,
+    });
+    expect(Update?.UpdateExpression).toMatch(/ REMOVE #title$/);
+    expect(Update?.ExpressionAttributeNames?.['#title']).toBe('title');
+    expect(Update?.ExpressionAttributeValues).not.toHaveProperty(':title');
   });
 
   it('still uses if_not_exists for the ttl anchor when forceTtlRefresh is not set', () => {

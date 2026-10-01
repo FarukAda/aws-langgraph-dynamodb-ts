@@ -287,6 +287,34 @@ describe('writeMessageChunk', () => {
     expect(calls[1].args[0].input.TransactItems?.[0]?.Update?.ConditionExpression).toBeUndefined();
   });
 
+  /**
+   * A restart is pinned to the expired anchor it observed. Losing that pin
+   * means another append restarted the session first; the retry then adds
+   * this chunk to the restarted session instead of starting it over again,
+   * which would lose the winner's count.
+   */
+  it('retries a lost restart as a plain append, adding to the session that won', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejectsOnce(ttlConditionFailure()).resolves({});
+    await expect(
+      writeMessageChunk(context(client), [messageItem('MSG#1')], {
+        sessionId: 's1',
+        count: 1,
+        now: 'u',
+        ttlTimestamp: 5000,
+        forceTtlRefresh: true,
+        restart: 1234,
+      }),
+    ).resolves.toBeUndefined();
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].args[0].input.TransactItems?.[0]?.Update?.UpdateExpression).toMatch(/^SET /);
+    expect(calls[1].args[0].input.TransactItems?.[0]?.Update?.UpdateExpression).toMatch(
+      /^ADD #count :n/,
+    );
+    expect(calls[1].args[0].input.TransactItems?.[0]?.Update?.ConditionExpression).toBeUndefined();
+  });
+
   it('uses a fresh ClientRequestToken on the retried attempt', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejectsOnce(ttlConditionFailure()).resolves({});

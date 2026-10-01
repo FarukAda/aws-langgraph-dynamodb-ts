@@ -309,6 +309,30 @@ describe('listSessions uses the recency index when the table has one', () => {
     expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
   });
 
+  /**
+   * One newest-first Query per shard of the history's own index partitions —
+   * `SESS#<shard>`, never the saver's — on the configured index.
+   */
+  it('reads each history shard of the named index, newest first', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await listSessions(indexed(client), { limit: 5 });
+    const inputs = mock.commandCalls(QueryCommand).map((call) => call.args[0].input);
+    expect(inputs.map((input) => input.ExpressionAttributeValues?.[':pk']).sort()).toEqual([
+      'SESS#0',
+      'SESS#1',
+    ]);
+    for (const input of inputs) {
+      expect(input).toMatchObject({
+        IndexName: 'gsi1',
+        KeyConditionExpression: '#pk = :pk',
+        ExpressionAttributeNames: { '#pk': 'gsi1pk' },
+        ScanIndexForward: false,
+        Limit: 5,
+      });
+    }
+  });
+
   it('drops expired and foreign rows the index still points at', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
@@ -356,6 +380,36 @@ describe('listSessions uses the recency index when the table has one', () => {
 
     expect(page.sessions.map((session) => session.sessionId)).toEqual(['b', 'b']);
     expect(typeof page.nextCursor).toBe('string');
+  });
+
+  /**
+   * The cursor is the index sort key of the last row the page took — both
+   * shards answer the same rows here, so the page is `b` twice and the cursor
+   * is `b`'s key — and the next page resumes strictly below it on every shard.
+   */
+  it('resumes the next page below the sort key the cursor encodes', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [sessionRow('b', '2026-01-02T00:00:00Z'), sessionRow('a', '2026-01-01T00:00:00Z')],
+    });
+    const first = await listSessions(indexed(client), { limit: 2 });
+    expect(Buffer.from(first.nextCursor as string, 'base64url').toString('utf8')).toBe(
+      '2026-01-02T00:00:00Z#b',
+    );
+
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await listSessions(indexed(client), { limit: 2, cursor: first.nextCursor });
+    const resumed = mock
+      .commandCalls(QueryCommand)
+      .slice(-2)
+      .map((call) => call.args[0].input);
+    for (const input of resumed) {
+      expect(input).toMatchObject({
+        KeyConditionExpression: '#pk = :pk AND #sk < :before',
+        ExpressionAttributeNames: { '#pk': 'gsi1pk', '#sk': 'gsi1sk' },
+        ExpressionAttributeValues: expect.objectContaining({ ':before': '2026-01-02T00:00:00Z#b' }),
+      });
+    }
   });
 
   it('falls back to the scan when no index is configured', async () => {

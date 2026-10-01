@@ -413,3 +413,51 @@ describe('bounded reads', () => {
     expect(mock.commandCalls(QueryCommand)[2].args[0].input.Limit).toBeUndefined();
   });
 });
+
+/**
+ * Within one adapter instance the message ids are strictly increasing, which
+ * is what orders a conversation. Two appends running at once on that instance
+ * must each stay contiguous as well: a turn that pairs an `AIMessage` holding
+ * tool calls with its `ToolMessage` is rejected by every model provider on the
+ * next request if another caller's message is sorted in between them.
+ */
+describe('two appends running at once on one instance', () => {
+  it('keep each append contiguous in sort order instead of interleaving their messages', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const written: string[][] = [];
+    mock
+      .on(TransactWriteCommand)
+      .callsFake((input: { TransactItems: { Put?: { Item: { SK: string } } }[] }) => {
+        written.push(input.TransactItems.flatMap((t) => (t.Put ? [t.Put.Item.SK] : [])));
+        return {};
+      });
+    // A serializer that yields between messages, as the default one does: the
+    // gap is where another append's ids used to be drawn.
+    const yielding = {
+      dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => {
+        await new Promise((resolve) => setImmediate(resolve));
+        return JSON_SERDE.dumpsTyped(value);
+      },
+      loadsTyped: JSON_SERDE.loadsTyped,
+    };
+    const h = new DynamoDBChatMessageHistory({ tableName: 'history', client, serde: yielding });
+
+    await Promise.all([
+      h.addMessages('sess-1', [
+        new HumanMessage('a1'),
+        new HumanMessage('a2'),
+        new HumanMessage('a3'),
+      ]),
+      h.addMessages('sess-1', [
+        new HumanMessage('b1'),
+        new HumanMessage('b2'),
+        new HumanMessage('b3'),
+      ]),
+    ]);
+
+    expect(written).toHaveLength(2);
+    const [first, second] = [...written].sort((x, y) => (x[0] < y[0] ? -1 : 1));
+    // Every key of the earlier append sorts before every key of the later one.
+    expect(first[first.length - 1] < second[0]).toBe(true);
+  });
+});

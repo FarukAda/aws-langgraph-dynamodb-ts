@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 
+import { sessionPartition } from '../../../src/history/internal/rows';
 import { DynamoDBChatMessageHistory } from '../../../src/index';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DDB_LOCAL_CONFIG, createTable, deleteTable } from '../helpers/ddb-local';
@@ -51,9 +52,17 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     const stored = await reader.getMessages(sessionId);
     expect(stored).toHaveLength(0);
 
+    // No ghost session: this call created the row, so the rollback removes
+    // it rather than leaving a listed session with a count of zero and the
+    // rolled-back first message's title.
     const { sessions: sessions } = await reader.listSessions();
-    const meta = sessions.find((session) => session.sessionId === sessionId);
-    expect(meta?.messageCount ?? 0).toBe(0);
+    expect(sessions.find((session) => session.sessionId === sessionId)).toBeUndefined();
+    const raw = await DynamoDBDocument.from(admin).get({
+      TableName: tableName,
+      Key: { PK: sessionPartition(sessionId), SK: 'HISTORY#SESSION' },
+      ConsistentRead: true,
+    });
+    expect(raw.Item).toBeUndefined();
   });
 
   it('persists the whole batch when no fault occurs (chunks committed together)', async () => {

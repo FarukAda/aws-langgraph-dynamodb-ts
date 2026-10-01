@@ -65,7 +65,7 @@ export class DynamoDBChatMessageHistory {
    * Get a session's messages in chronological order.
    *
    * Accepts: `sessionId` — validated. `options.limit` — an integer from 1 to
-   * `MAX_PAGE_LIMIT` (10,000); only the newest that many messages. `0` is
+   * 10,000; only the newest that many messages. `0` is
    * refused rather than answered with an empty conversation, which is the one
    * place this package refuses a `limit` of zero. `options.before` — a valid
    * `Date`; only messages appended before that instant. Neither given reads
@@ -103,8 +103,10 @@ export class DynamoDBChatMessageHistory {
    * Append messages to a session.
    *
    * Accepts: `sessionId` — validated. `messages` — LangChain messages; an empty
-   * list writes nothing and is not an error. `options.signal` — aborts between
-   * chunks.
+   * list writes nothing and is not an error. `options.signal` — ends the
+   * upload or chunk transaction in flight and any wait between them; a chunk
+   * that landed before the cancel is rolled back like any other committed
+   * chunk of a failed append.
    *
    * Returns: nothing, and only once every message has landed.
    *
@@ -112,8 +114,10 @@ export class DynamoDBChatMessageHistory {
    * an array, or, with the offending index, for an element that is not a
    * message or one that could never be read back; naming `payload` for a
    * message too large to store inline without `s3`, or, once offloaded,
-   * larger than `s3.maxDownloadBytes`; or naming `signal` or
-   * `options.<key>` for a key this package does not read;
+   * larger than `s3.maxDownloadBytes`; naming `s3Key` for an offloaded
+   * object's key over S3's cap; or naming `signal` or `options.<key>` for a
+   * key this package does not read; `S3_OFFLOAD_FAILED` when an offloaded
+   * message cannot be uploaded;
    * `COMPENSATION_FAILED` when a chunk fails and either the rollback fails
    * too or that chunk's own outcome could not be established;
    * `RETRY_EXHAUSTED` after 18 contended attempts; a classified AWS failure;
@@ -162,7 +166,9 @@ export class DynamoDBChatMessageHistory {
   /**
    * Delete a session's messages, metadata and offloaded objects.
    *
-   * Accepts: `sessionId` — validated. `options.signal` — aborts between pages.
+   * Accepts: `sessionId` — validated. `options.signal` — ends the read or
+   * delete in flight and any wait between them; rows already deleted stay
+   * deleted.
    *
    * Returns: nothing. Clearing a session that does not exist is not an error.
    *
@@ -202,7 +208,7 @@ export class DynamoDBChatMessageHistory {
    * bounded by `maxItems` / `maxIterations`, and returning the newest `limit`
    * sessions, or every session when no limit is given, with no cursor.
    *
-   * Accepts: `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000);
+   * Accepts: `options.limit` — an integer from 0 to 10,000;
    * the page size with the index, the newest N without it, and `0` an empty
    * page read from neither. `options.cursor` — from a previous page,
    * and only with a configured `indexName`. `options.maxItems` /
@@ -227,7 +233,7 @@ export class DynamoDBChatMessageHistory {
    * page still needs one, so a shard can cost a query whose rows the page never
    * takes; at most `readConcurrency` shards are queried at once. Memory is the
    * page being built, up to `limit` rows and so bounded by
-   * `MAX_PAGE_LIMIT` (10,000), plus at most one DynamoDB page per shard,
+   * 10,000, plus at most one DynamoDB page per shard,
    * whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
@@ -245,8 +251,9 @@ export class DynamoDBChatMessageHistory {
    * Accepts: `sessionId` — validated, and an existing session.
    * `options.signal` — aborts the reads.
    *
-   * Returns: the count now stored, which is the number of messages a reader
-   * would see.
+   * Returns: the count now stored: the session's live message rows, which is
+   * what `getMessages` returns, except for a row it drops as corrupt under
+   * `onCorruptMessage: 'skip'`, which is counted here all the same.
    *
    * Throws: `VALIDATION` for a malformed session id, an invalid `signal`,
    * or an `options.<key>` this package does not read; `CONDITION_CONFLICT` when the

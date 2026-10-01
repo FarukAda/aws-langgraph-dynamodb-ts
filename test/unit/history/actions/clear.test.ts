@@ -61,11 +61,14 @@ describe('clearSession', () => {
     expect(mock.commandCalls(DeleteCommand)).toHaveLength(0);
   });
 
-  it('reads the session partition strongly-consistently', async () => {
+  it("reads the session's own partition, and only it, strongly-consistently", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
     await clearSession(context(client), 'sess-1');
-    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+    const input = mock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(input.ConsistentRead).toBe(true);
+    expect(input.KeyConditionExpression).toBe('#pk = :pk');
+    expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#sess-1' });
   });
 
   it('deletes every message item and the metadata item', async () => {
