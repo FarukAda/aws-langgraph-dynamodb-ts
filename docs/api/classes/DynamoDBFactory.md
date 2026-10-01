@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L117)
+Defined in: [factory/factory.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L133)
 
 Convenience constructors for the adapters.
 
@@ -30,7 +30,7 @@ field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:136](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L136)
+Defined in: [factory/factory.ts:152](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L152)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
@@ -65,7 +65,7 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:263](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L263)
+Defined in: [factory/factory.ts:284](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L284)
 
 Build the adapters whose sections are given, all on one shared client.
 
@@ -113,7 +113,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:233](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L233)
+Defined in: [factory/factory.ts:253](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L253)
 
 A chat history, on the factory's `client` when it has one and otherwise on
 its own.
@@ -140,13 +140,14 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:204](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L204)
+Defined in: [factory/factory.ts:222](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L222)
 
 A saver, on the factory's `client` when it has one and otherwise on its own.
 
 Accepts: `options` — the saver's own, laid over the factory's defaults. A
-per-adapter value wins; see defaultsFor for how a client choice
-replaces the factory's as a unit.
+per-adapter value wins, and a key given as `undefined` is not a value;
+a client choice (`client`, `clientConfig` or neither) replaces the
+factory's as a unit.
 
 Returns: the saver. It owns, and releases on `destroy()`, only a client it
 built itself; a `client` from the factory is never closed by it.
@@ -173,7 +174,7 @@ characters instead of refusing it.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L218)
+Defined in: [factory/factory.ts:237](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L237)
 
 A store, on the factory's `client` when it has one and otherwise on its own.
 

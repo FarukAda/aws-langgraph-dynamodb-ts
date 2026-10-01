@@ -58,13 +58,13 @@ Guarantees: no I/O. Constructing a store issues no request.
 
 > **batch**\<`Op`\>(`operations`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/store.ts:177](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L177)
+Defined in: [store/store.ts:179](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L179)
 
 Execute a batch of operations and return their results in operation
 order.
 
-Accepts: `operations` — an array of operation objects, in the order they
-are to be observed; an empty batch does nothing and returns `[]`. Every
+Accepts: `operations` — an array of operation objects; an empty batch
+does nothing and returns `[]`. Every
 operation is checked before any of them runs. A put carrying a `null`
 value deletes its item. `get`, `put`, `delete` and `listNamespaces` check
 their own call by the same rules and run the same dispatch, as upstream's
@@ -95,12 +95,14 @@ failure; `RETRY_EXHAUSTED`;
 `maxScanItems` or `maxIterations`. One failing operation rejects the
 whole batch.
 
-Guarantees: the order the caller wrote is the order the caller observes — a
-get after a put of the same item sees it, a get before one does not, and a
-search sees every write that precedes it and none that follow. Operations
-addressing different items run concurrently, so a batch of ten gets costs
-about one round trip rather than ten, sharing one `readConcurrency`
-decode budget between them rather than each holding a full one.
+Guarantees: the batch is evaluated as the reference store evaluates one —
+every get, search and listing is answered as the batch found things, and
+the puts and deletes land afterwards, one per item, the last one written
+winning — so two tasks of one superstep that touch one item get the same
+answers whichever was enqueued first. The reads run concurrently, then the
+writes, so a batch of ten gets costs about one round trip rather than ten,
+sharing one `readConcurrency` decode budget between them rather than each
+holding a full one.
 
 #### Type Parameters
 
@@ -128,7 +130,7 @@ decode budget between them rather than each holding a full one.
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:295](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L295)
+Defined in: [store/store.ts:299](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L299)
 
 Remove one item, as upstream does: a put operation carrying `null`.
 
@@ -182,7 +184,7 @@ is correct: a live row still names the object.
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:445](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L445)
+Defined in: [store/store.ts:450](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L450)
 
 Release owned resources.
 
@@ -206,7 +208,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:480](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L480)
+Defined in: [store/store.ts:485](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L485)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -251,7 +253,7 @@ the shorter rule would expire. Raising the `ttl` is safe at once.
 
 > **get**(`namespace`, `key`): `Promise`\<`Item` \| `null`\>
 
-Defined in: [store/store.ts:216](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L216)
+Defined in: [store/store.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L218)
 
 Retrieve one item. Overrides the base implementation so the call is
 guarded here; the operation is the one upstream builds.
@@ -304,13 +306,13 @@ signal to fire.
 
 > **listNamespaces**(`options?`): `Promise`\<`string`[][]\>
 
-Defined in: [store/store.ts:323](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L323)
+Defined in: [store/store.ts:327](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L327)
 
 List the distinct namespaces, sorted, optionally filtered and truncated.
 
 Accepts: `options.prefix`/`suffix` — labels a namespace can hold, where
 `'*'` matches any one label. `options.maxDepth` — at least 1.
-`options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+`options.limit` — an integer from 0 to 10,000, defaulting
 to 100, where `0` returns an empty listing without reading the table.
 `options.offset` — a non-negative integer, defaulting to 0.
 
@@ -343,7 +345,7 @@ than refused, since the options are LangGraph's (decision record 28).
 
 > **put**(`namespace`, `key`, `value`, `index?`): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:251](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L251)
+Defined in: [store/store.ts:255](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L255)
 
 Store or replace one item. Overrides the base implementation, whose own
 namespace check threw an error this package does not brand. The value and
@@ -361,10 +363,12 @@ Returns: nothing.
 Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
 `sortKey`, `value` or `index`; `payload` for a value too large to store
 inline without `s3`, or, once offloaded, larger than
-`s3.maxDownloadBytes`; `VALIDATION` again, naming `index` or `value`, for
-the built row over DynamoDB's 400 KB item limit — `index` when its inline
-vectors are what pushed it over — checked before anything is written; a
-classified AWS failure; `RETRY_EXHAUSTED`.
+`s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+cap; `VALIDATION` again, naming `index` or `value`, for the built row over
+DynamoDB's 400 KB item limit — `index` when its inline vectors are what
+pushed it over — checked before anything is written; `S3_OFFLOAD_FAILED`
+when an offloaded payload cannot be uploaded; a classified AWS failure;
+`RETRY_EXHAUSTED`.
 
 #### Parameters
 
@@ -398,13 +402,14 @@ classified AWS failure; `RETRY_EXHAUSTED`.
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:402](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L402)
+Defined in: [store/store.ts:407](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L407)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
 
 Accepts: `namespacePrefix` — a non-empty namespace. `options.signal` —
-aborts between pages.
+ends the read or download in flight and any wait between them; vectors
+already upserted or pruned stay so.
 
 Returns: how many vectors were upserted and how many pruned.
 
@@ -440,7 +445,7 @@ since a snapshot that already found it with nothing to embed.
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:364](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L364)
+Defined in: [store/store.ts:368](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L368)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal.
@@ -449,7 +454,7 @@ Accepts: `namespacePrefix` — labels a namespace can hold; empty spans the
 whole table. `options.query` —
 absent or empty ranks nothing. `options.filter` — metadata equality on the
 item's value. `options.offset` — a non-negative integer, defaulting to 0.
-`options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+`options.limit` — an integer from 0 to 10,000, defaulting
 to 10, where `0` returns an empty page without a read or an embedding.
 `options.signal` — aborts the reads.
 
@@ -495,7 +500,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:428](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L428)
+Defined in: [store/store.ts:433](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L433)
 
 LangGraph's lifecycle hook.
 

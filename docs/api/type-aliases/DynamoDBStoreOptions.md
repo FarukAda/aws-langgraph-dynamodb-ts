@@ -48,7 +48,7 @@ rows, since those pages hold few rows for `maxScanItems` to count.
 Cap on rows read into memory by one search, namespace listing or
 reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
 truncation: a partial answer is never returned as a complete one.
-Defaults to `MAX_TOTAL_ROWS_IN_MEMORY`.
+Defaults to 10,000; the ceiling is 1,000,000.
 
 ### maxSearchCandidates?
 

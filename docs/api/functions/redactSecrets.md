@@ -8,7 +8,7 @@
 
 > **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): [`Redactable`](../type-aliases/Redactable.md)
 
-Defined in: [shared/logging/redaction.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L85)
+Defined in: [shared/logging/redaction.ts:111](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L111)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
 `[REDACTED]` and any recognised secret *shape* inside a string — including an
@@ -28,15 +28,19 @@ typed `Error`, a class instance or a `Record`, so callers never cast. A
 cyclic or shared graph is fine; each node is walked once. `patterns` and
 `valuePatterns` — the key names and value shapes to redact, an array of
 strings and an array of `RegExp` respectively; both default to this
-package's own lists, and an empty one turns that rule off.
+package's own lists, and an empty one turns that rule off. A key name is
+matched by its normalised form — lower-case, punctuation removed — against
+the end of each key's, so `'apiKey'` covers `x-api-key` and `API_KEY`.
 
 Returns: a redacted clone. The input is never mutated — a logger that
 scrubbed the caller's own object would corrupt the very data the application
 is working with.
 
 Throws: `VALIDATION` naming `patterns` or `valuePatterns` for a list this
-function could not apply, which is a mistake in the call itself and is
-raised before anything is walked. Nothing after that: a value whose
+function could not apply — a non-array, a wrong entry, or a key name with
+no letter or digit in it, which would match every key — which is a mistake
+in the call itself and is raised before anything is walked. Nothing after
+that: a value whose
 redaction fails — a throwing getter, a structure deep enough to exhaust the
 stack — is replaced whole by `[UNREDACTABLE]`, since a logger that throws
 takes down the operation it was only observing. [redactLogger](redactLogger.md)

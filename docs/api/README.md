@@ -84,6 +84,7 @@ exports map admits no deep import, so nothing else is reachable.
 - [SearchOptions](type-aliases/SearchOptions.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
+- [WriteRequest](type-aliases/WriteRequest.md)
 
 ## Variables
 
