@@ -22,7 +22,7 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm ru
 - `npm run check:docs` passes when a `ts`/`typescript` sample in the README, `CONTRIBUTING.md`, `docs/guide.md` or the CHANGELOG changed, and `npm run check:links` when a heading moved or a relative link changed.
 - `npm run docs` is re-run, and the regenerated `docs/api` committed, when public JSDoc changed.
 - New behaviour has a new test, and anything a user can observe gets a `CHANGELOG.md` entry under `[Unreleased]`.
-- `npm run unused` (knip), `npm run depcheck` and `npm run cpd` (jscpd) are clean — CI's hygiene job runs all three, alongside `check:docs` and `check:links`.
+- `npm run unused` (knip) and `npm run cpd` (jscpd) are clean — CI's hygiene job runs both, alongside `check:docs` and `check:links`.
 
 ## The rules the guards enforce
 
@@ -85,9 +85,9 @@ A real-AWS test creates its own resources and tears them down in `afterAll` (use
 - **`npm audit (high+)`** — fails the build on a high-or-critical advisory anywhere in the installed tree.
 - **`typecheck (full program: src + test + configs)`** — runs `npm run typecheck:all`.
 - **`integration (DynamoDB Local)`** — runs the integration and conformance suites against a DynamoDB Local service container.
-- **`conformance (langgraph ${{ matrix.langgraph }})`** — runs the conformance suite twice more, pinned to the declared peer floor (`1.1.5`) and to `latest`.
-- **`repository hygiene (knip, depcheck, jscpd, actionlint, changelog)`** — runs `npm run unused`, `npm run depcheck`, `npm run cpd`, `npm run test:scripts`, `npm run check:docs`, `npm run check:links` and `actionlint`, and on a pull request fails if `src/` changed without a `CHANGELOG.md` entry.
-- **`peer dependency floors`** — installs every declared peer at the floor of its range and type-checks and tests against it.
+- **`conformance (langgraph ${{ matrix.langgraph }})`** — runs the conformance suite twice more, pinned to the declared peer floor (`1.1.5`, beside the newest validation suite and LangGraph that admit it: `FLOOR_COMPANIONS_CHECKPOINT` in `ci.yml`) and to `latest` (beside the newest suite). Each leg writes what it tests into `package.json` as exact devDependencies for that run only and restores the manifest, so npm resolves one tree strictly.
+- **`repository hygiene (knip, jscpd, actionlint, changelog)`** — runs `npm run unused`, `npm run cpd`, `npm run test:scripts`, `npm run check:docs`, `npm run check:links` and `actionlint`, and on a pull request fails if `src/` changed without a `CHANGELOG.md` entry.
+- **`peer dependency floors`** — installs every declared peer at the floor of its range beside the floor companions (`FLOOR_COMPANIONS_*` in `ci.yml`: the dev packages whose own ranges outrun a floor, each at the newest release that admits it), as exact devDependencies for that run only so npm resolves one tree strictly, restores the manifest, and type-checks and unit-tests against the result.
 - **`API reference is regenerated`** — runs `npm run docs` and fails if `docs/api` drifts from the committed copy.
 - **`package smoke (npm pack + install + import)`** — builds, runs the surface baseline, `npm run pack:check`, the package smoke test and `npm run test:consumer-types`.
 

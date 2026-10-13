@@ -13,7 +13,7 @@
   "integration (DynamoDB Local)",
   "conformance (langgraph 1.1.5)",
   "conformance (langgraph latest)",
-  "repository hygiene (knip, depcheck, jscpd, actionlint, changelog)",
+  "repository hygiene (knip, jscpd, actionlint, changelog)",
   "peer dependency floors",
   "API reference is regenerated",
   "package smoke (npm pack + install + import)",

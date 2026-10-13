@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -50,12 +50,18 @@ jobs:
       # newest peers beside this repository's dev dependencies (ERESOLVE against
       # the pinned `langchain` or `@langchain/aws`) tested nothing, and would
       # otherwise read as the upstream break this workflow exists to report.
+      # Written into package.json as exact devDependencies for this run only
+      # and restored afterwards, so npm resolves one tree strictly; a --no-save
+      # install would judge a new checkpoint package against the suite the
+      # lockfile still holds before replacing that suite, and refuse the pair.
       - name: Install the newest LangGraph and LangChain releases
         run: |
-          if ! npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest @langchain/langgraph-checkpoint-validation@latest; then
+          if ! npm install --save-dev --save-exact @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest @langchain/langgraph-checkpoint-validation@latest; then
             echo "::error title=The newest peers did not install::npm could not place them beside this repository's dev dependencies, so nothing was tested. Move the dev-dependency pin that refuses them; this is not evidence that an upstream release broke the package."
             exit 1
           fi
+          git checkout -- package.json package-lock.json
+          npm ls --depth=0 @langchain/core @langchain/langgraph-checkpoint @langchain/langgraph @langchain/langgraph-checkpoint-validation
 
       # Fails first when LangGraph adds a key to an option object this package
       # ignores at run time (test/types/upstream-option-keys.test.ts).
