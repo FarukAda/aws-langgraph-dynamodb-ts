@@ -3,11 +3,12 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    # Raise a range in package.json only when the new version falls outside it.
-    # This package is a library: a dependency or peer floor moves in a release
-    # the CHANGELOG announces, never in a routine update (README, *Supported
-    # runtimes and peers*).
-    versioning-strategy: increase-if-necessary
+    # Raise the range in package.json with every update, so the ranges always
+    # name the releases this repository tests against and `npm-check-updates`
+    # has nothing to report. Dependabot never touches peerDependencies: a peer
+    # floor is raised by hand, in a major, and announced in that release's
+    # CHANGELOG (README, *Supported runtimes and peers*).
+    versioning-strategy: increase
     schedule:
       interval: weekly
       day: monday

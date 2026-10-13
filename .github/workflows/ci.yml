@@ -17,23 +17,6 @@ concurrency:
   # Superseded pushes to a branch are cancelled; runs on main always finish.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# The floor companions: the dev packages whose own peer or dependency ranges
-# outrun a declared peer floor, each at the newest release that admits the
-# floor. The validation suite's 1.2.0 peers on @langchain/langgraph-checkpoint
-# ^1.2.0 and LangGraph 1.4.20 and later depend on ^1.1.6, above the 1.1.5
-# floor; langchain 1.5.12 and later and @langchain/aws 1.4.6 peer on
-# @langchain/core above the 1.2.11 floor. The `conformance (langgraph 1.1.5)`
-# leg installs the checkpoint companions beside the checkpoint floor, and the
-# `peer dependency floors` job installs all of them beside every floor — as
-# exact devDependencies for that run only, so npm resolves one tree strictly
-# (no --force, no --legacy-peer-deps: npm's own ERESOLVE is the signal that a
-# companion no longer admits a floor), and the manifest and lockfile are
-# restored before anything is tested. Move an entry when the floor it follows
-# moves.
-env:
-  FLOOR_COMPANIONS_CHECKPOINT: '@langchain/langgraph-checkpoint-validation@1.1.1 @langchain/langgraph@1.4.19'
-  FLOOR_COMPANIONS_CORE: 'langchain@1.5.11 @langchain/aws@1.4.5'
-
 # Every job bounds itself with `timeout-minutes`, so a hung step costs minutes
 # rather than GitHub's six-hour default, and every checkout drops its token,
 # since no job here pushes and `npm ci` runs in most of them.
@@ -196,8 +179,10 @@ jobs:
       matrix:
         # Prove the checkpoint contract holds across the supported
         # @langchain/langgraph-checkpoint range: the declared floor (the
-        # peerDependencies range's lower bound) and the newest release.
-        langgraph: ['1.1.5', 'latest']
+        # peerDependencies range's lower bound, read from package.json by
+        # scripts/peer-floors.mjs at run time, so the leg's name never carries
+        # a version) and the newest release.
+        langgraph: ['floor', 'latest']
     services:
       dynamodb-local:
         image: amazon/dynamodb-local:3.3.1
@@ -223,22 +208,26 @@ jobs:
       # lockfile afterwards, so npm resolves one tree, strictly. A --no-save
       # install would judge the new checkpoint package against the suite the
       # lockfile still holds before replacing that suite, and refuse the pair.
-      # The floor leg installs the checkpoint companions beside the floor (see
-      # FLOOR_COMPANIONS_CHECKPOINT at the top of this file); the `latest` leg
-      # installs the newest suite beside the newest checkpoint package, so a
-      # test the suite adds for a new contract — 1.2.0's `writesSortKey`
-      # order, say — runs here on every push.
+      # The floor leg installs the floor the peer range declares, beside the
+      # validation suite the lockfile holds, whose own range has to admit it;
+      # the `latest` leg installs the newest suite beside the newest
+      # checkpoint package, so a test the suite adds for a new contract —
+      # 1.2.0's `writesSortKey` order, say — runs here on every push.
       - name: Pin the checkpoint package under test
         run: |
           set -euo pipefail
           if [ "${{ matrix.langgraph }}" = "latest" ]; then
             npm install --save-dev --save-exact @langchain/langgraph-checkpoint@latest @langchain/langgraph-checkpoint-validation@latest
           else
-            read -ra companions <<< "${FLOOR_COMPANIONS_CHECKPOINT}"
-            npm install --save-dev --save-exact @langchain/langgraph-checkpoint@${{ matrix.langgraph }} "${companions[@]}"
+            floor="$(npm run --silent peer-floors | grep '^@langchain/langgraph-checkpoint@' || true)"
+            if [ -z "${floor}" ]; then
+              echo "::error::scripts/peer-floors.mjs printed no @langchain/langgraph-checkpoint floor; nothing would be pinned."
+              exit 1
+            fi
+            npm install --save-dev --save-exact "${floor}"
           fi
           git checkout -- package.json package-lock.json
-          npm ls --depth=0 @langchain/langgraph-checkpoint @langchain/langgraph-checkpoint-validation @langchain/langgraph
+          npm ls --depth=0 @langchain/langgraph-checkpoint @langchain/langgraph-checkpoint-validation
 
       - name: Type-check the adapters against the pinned checkpoint package
         run: npm run typecheck:all
@@ -349,14 +338,14 @@ jobs:
       # substitution, and an empty list would make the install below a no-op
       # and the job a pass that tested nothing.
       #
-      # The floors go in beside the floor companions (see FLOOR_COMPANIONS_*
-      # at the top of this file), written into package.json as exact
-      # devDependencies for this run only, so npm resolves one tree strictly
-      # and a floor that no companion admits fails here with npm's own
-      # ERESOLVE. The manifest and lockfile are then restored, so the static
-      # guards read the committed ones while node_modules keeps the floor
-      # world. Each installed version is read from its own package.json, name
-      # and version, so a spec npm quietly resolved elsewhere cannot pass.
+      # The floors are written into package.json as exact devDependencies for
+      # this run only, so npm resolves one tree strictly, and a floor the dev
+      # dependencies' own ranges no longer admit fails here with npm's own
+      # ERESOLVE: the signal that the floor has to move, in a release. The
+      # manifest and lockfile are then restored, so the static guards read the
+      # committed ones while node_modules keeps the floor world. Each
+      # installed version is read from its own package.json, name and
+      # version, so a spec npm quietly resolved elsewhere cannot pass.
       - name: Install every declared peer at its floor
         run: |
           set -euo pipefail
@@ -366,11 +355,10 @@ jobs:
             echo "::error::scripts/peer-floors.mjs produced no peer specs; nothing would be installed or tested."
             exit 1
           fi
-          read -ra companions <<< "${FLOOR_COMPANIONS_CHECKPOINT} ${FLOOR_COMPANIONS_CORE}"
-          echo "installing ${floors[*]} ${companions[*]}"
-          npm install --save-dev --save-exact "${floors[@]}" "${companions[@]}"
+          echo "installing ${floors[*]}"
+          npm install --save-dev --save-exact "${floors[@]}"
           git checkout -- package.json package-lock.json
-          for spec in "${floors[@]}" "${companions[@]}"; do
+          for spec in "${floors[@]}"; do
             name="${spec%@*}"
             version="${spec##*@}"
             installed="$(node -p "require('./node_modules/${name}/package.json').version")"

@@ -188,9 +188,9 @@ const { DynamoDBSaver } = require('@farukada/aws-langgraph-dynamodb-ts'); // Com
 
 | Package | Range | Needed for |
 | --- | --- | --- |
-| `@langchain/core` | `^1.2.11` | every adapter: messages, `Embeddings`, `RunnableConfig` |
-| `@langchain/langgraph-checkpoint` | `^1.1.5` | every adapter: `BaseCheckpointSaver`, `BaseStore`, the serializer protocol |
-| `@aws-sdk/client-s3` | `^3.1132.0` | S3 offloading only; an optional peer |
+| `@langchain/core` | `^1.2.17` | every adapter: messages, `Embeddings`, `RunnableConfig` |
+| `@langchain/langgraph-checkpoint` | `^1.2.0` | every adapter: `BaseCheckpointSaver`, `BaseStore`, the serializer protocol |
+| `@aws-sdk/client-s3` | `^3.1150.0` | S3 offloading only; an optional peer |
 | `@langchain/langgraph` | any 1.x release depending on a supported `@langchain/langgraph-checkpoint` | your application's, not a peer: the graphs in the examples below |
 
 `@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb` and `@aws-sdk/util-dynamodb` are regular dependencies and install with the package. What each range is tested against is in [Supported runtimes and peers](#supported-runtimes-and-peers).
@@ -1271,8 +1271,8 @@ What your code has to change, most common first:
 
 - **Dependencies.**
   - `@langchain/langgraph` is no longer a peer, so depend on it yourself.
-  - The peer floors are `@langchain/core` `^1.2.11` (was `^1.2.9`) and the optional `@aws-sdk/client-s3` `^3.1132.0` (was `^3.900.0`); `@langchain/langgraph-checkpoint` stays `^1.1.5`.
-  - The dependencies are `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1132.0` (was `^3.1116.0`), and the new `@aws-sdk/util-dynamodb`.
+  - The peer floors are `@langchain/core` `^1.2.17` (was `^1.2.9`) and `@langchain/langgraph-checkpoint` `^1.2.0` (was `^1.1.5`), the packages LangGraph 1.5 ships with — a LangGraph 1.4 application keeps working once it takes `@langchain/langgraph-checkpoint` 1.2.0, which LangGraph 1.4's own range admits — and the optional `@aws-sdk/client-s3` `^3.1150.0` (was `^3.900.0`).
+  - The dependencies are `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1150.0` (was `^3.1116.0`), and the new `@aws-sdk/util-dynamodb`.
 - **Inputs that are now refused with `VALIDATION`**, naming what is wrong. Each was accepted, ignored or reported as an AWS failure before:
   - an option key the adapter does not read (`options.<key>`) on every options object this package defines — the constructors', every `{ signal }`, `getMessages`' and the history window — and a non-object options value. The option objects LangGraph defines (`saver.list`'s, `getDeltaChannelHistory`'s, `store.search`'s and `store.listNamespaces`') ignore a key they do not read, so a LangGraph release that adds one cannot break the call ([decision record 28](docs/decisions/0028-ignore-keys-langgraph-adds-to-option-objects-it-defines.md));
   - a number past its ceiling (see [Limits](#limits)), and a read cap (`maxItems`, `maxIterations`) that is not an integer of at least 1;
@@ -1984,9 +1984,9 @@ Every row carries `v`, its format version; a row whose `v` is higher than the re
 | --- | --- | --- |
 | Node.js | 22, 24 and 26 | the unit tier on Linux, macOS and Windows |
 | TypeScript (consumers) | 5.x and later | the package smoke type-checks the shipped declarations with both the 5.x floor and the newest release |
-| `@langchain/langgraph-checkpoint` | `^1.1.5` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
+| `@langchain/langgraph-checkpoint` | `^1.2.0` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
 | `@langchain/langgraph` | any 1.x release depending on a supported `@langchain/langgraph-checkpoint` (not a peer of this package) | the compiled-graph conformance tests |
-| `@langchain/core` | `^1.2.11` | the differential and history tests |
+| `@langchain/core` | `^1.2.17` | the differential and history tests |
 | AWS SDK v3 (`@aws-sdk/client-dynamodb`, `lib-dynamodb`, optional `client-s3`) | the ranges in `package.json` | every tier |
 
 Node 22 is supported until its end of life, 2027-04-30; the floor is not raised before then, and raising it afterwards is a **major**. Raising a peer floor is a **major**; widening a range is a minor. A peer range is never narrowed in a patch. Each is announced in the CHANGELOG.

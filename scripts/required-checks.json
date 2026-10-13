@@ -11,7 +11,7 @@
   "npm audit (high+)",
   "typecheck (full program: src + test + configs)",
   "integration (DynamoDB Local)",
-  "conformance (langgraph 1.1.5)",
+  "conformance (langgraph floor)",
   "conformance (langgraph latest)",
   "repository hygiene (knip, jscpd, actionlint, changelog)",
   "peer dependency floors",
