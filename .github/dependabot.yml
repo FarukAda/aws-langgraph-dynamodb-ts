@@ -24,6 +24,19 @@ updates:
       # Lift this when the @langchain/core floor moves in a release.
       - dependency-name: langchain
         versions: [">=1.5.12"]
+      # Dev-only (the live Bedrock suite and examples/). @langchain/aws 1.4.6
+      # peers on @langchain/core ^1.2.13, above the 1.2.11 floor, and breaks
+      # the same job the same way. Lift it with the one above.
+      - dependency-name: "@langchain/aws"
+        versions: [">=1.4.6"]
+      # Dev-only. The validation suite's 1.2.0 peers on
+      # @langchain/langgraph-checkpoint ^1.2.0, above the 1.1.5 floor the
+      # `conformance (langgraph 1.1.5)` job pins; that job keeps the suite the
+      # lockfile holds, and the `latest` leg installs the newest suite beside
+      # the newest checkpoint package, so the new tests still run on every
+      # push. Lift it when the @langchain/langgraph-checkpoint floor moves.
+      - dependency-name: "@langchain/langgraph-checkpoint-validation"
+        versions: [">=1.2.0"]
     groups:
       aws-sdk:
         patterns:

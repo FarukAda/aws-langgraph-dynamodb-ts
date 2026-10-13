@@ -52,7 +52,7 @@ jobs:
       # otherwise read as the upstream break this workflow exists to report.
       - name: Install the newest LangGraph and LangChain releases
         run: |
-          if ! npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest; then
+          if ! npm install --no-save @langchain/core@latest @langchain/langgraph-checkpoint@latest @langchain/langgraph@latest @langchain/langgraph-checkpoint-validation@latest; then
             echo "::error title=The newest peers did not install::npm could not place them beside this repository's dev dependencies, so nothing was tested. Move the dev-dependency pin that refuses them; this is not evidence that an upstream release broke the package."
             exit 1
           fi

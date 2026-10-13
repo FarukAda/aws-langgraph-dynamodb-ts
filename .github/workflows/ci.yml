@@ -201,8 +201,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The floor leg keeps the validation suite the lockfile holds, whose
+      # peer range admits the floor; the `latest` leg installs the newest suite
+      # beside the newest checkpoint package, so a test the suite adds for a
+      # new contract — 1.2.0's `writesSortKey` order, say — runs here before
+      # the dev dependency can move (see .github/dependabot.yml).
       - name: Pin the checkpoint package under test
-        run: npm install --no-save @langchain/langgraph-checkpoint@${{ matrix.langgraph }}
+        run: |
+          if [ "${{ matrix.langgraph }}" = "latest" ]; then
+            npm install --no-save @langchain/langgraph-checkpoint@latest @langchain/langgraph-checkpoint-validation@latest
+          else
+            npm install --no-save @langchain/langgraph-checkpoint@${{ matrix.langgraph }}
+          fi
 
       - name: Type-check the adapters against the pinned checkpoint package
         run: npm run typecheck:all
