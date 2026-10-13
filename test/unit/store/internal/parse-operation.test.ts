@@ -117,6 +117,22 @@ describe('parseOperation (routing)', () => {
     expect(() => parseOperation({ namespace: ['a.b'], key: 'k' })).not.toThrow();
   });
 
+  /**
+   * `InMemoryStore.batch` refuses a `.` in a label on every operation from
+   * `@langchain/langgraph-checkpoint@1.2.0`; a write refuses it here too, so
+   * nothing new lands under such a label, while a read or a delete still
+   * accepts one, so a row a batch put wrote before the rule stays reachable
+   * and removable. The reserved root stays a `put()`-only rule, as the
+   * reference's `batch` allows it.
+   */
+  it('refuses a period in a put label, and still reads or deletes under one', () => {
+    expect(() => parseOperation({ namespace: ['a.b'], key: 'k', value: {} })).toThrow(
+      refusal('namespace element'),
+    );
+    expect(() => parseOperation({ namespace: ['a.b'], key: 'k', value: null })).not.toThrow();
+    expect(() => parseOperation({ namespace: ['langgraph'], key: 'k', value: {} })).not.toThrow();
+  });
+
   it('refuses an entry that is null, a primitive or an array, naming operations', () => {
     for (const entry of [null, 42, 'x', []]) {
       expect(() => parseOperation(entry as never)).toThrow(refusal('operations'));

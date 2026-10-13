@@ -12,8 +12,11 @@ import {
   type SearchItem,
 } from '@langchain/langgraph-checkpoint';
 
+import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { partitionKey, sortKey } from '../../../src/store/internal/rows';
+import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
+import { buildStoreRow, partitionKey, sortKey } from '../../../src/store/internal/rows';
+import type { StoreContext } from '../../../src/store/internal/setup';
 import { DynamoDBStore } from '../../../src/store/store';
 import {
   answerDeleteReads,
@@ -31,8 +34,8 @@ function storeWithMock(): { store: DynamoDBStore; mock: Mock } {
 }
 
 /** Back the mock with a one-row table, so writes, reads and a search observe each other. */
-function oneRowTable(mock: Mock): void {
-  let stored: Record<string, unknown> | undefined;
+function oneRowTable(mock: Mock, seed?: Record<string, unknown>): void {
+  let stored: Record<string, unknown> | undefined = seed;
   /** The pre-read a delete pins on sees the same row every other read does. */
   mock.on(GetCommand).callsFake(() => ({ Item: stored }));
   mock.on(QueryCommand).callsFake(() => ({ Items: stored ? [stored] : [] }));
@@ -195,25 +198,60 @@ function viaBatch(store: DynamoDBStore): ItemRoute {
   };
 }
 
+const EMAIL_NAMESPACE = ['memories', 'jane.doe@example.com'];
+
 /**
- * Upstream refuses a `.` label only in `BaseStore.put` itself. The reference
- * store's `batch` accepts one, and LangGraph reaches a store only through
- * `batch`, so a graph keying memories by e-mail address must keep working here.
+ * The row a put under an e-mail label wrote before the period rule reached
+ * every write: through `batch`, which accepted one up to `1.0.0-rc.2`.
  */
-async function roundTripAnEmailNamespace(route: ItemRoute): Promise<void> {
-  const namespace = ['memories', 'jane.doe@example.com'];
-  await route.put(namespace, 'profile', { name: 'Jane' });
-  expect((await route.get(namespace, 'profile'))?.value).toEqual({ name: 'Jane' });
-  expect((await route.search(['memories'])).map((item) => item.namespace)).toEqual([namespace]);
-  await route.delete(namespace, 'profile');
-  expect(await route.get(namespace, 'profile')).toBeNull();
+async function legacyEmailRow(): Promise<Record<string, unknown>> {
+  const context: StoreContext = {
+    client: createStrictDocumentMock().client,
+    tableName: 'store',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    maxSearchCandidates: 1000,
+    maxScanItems: 10000,
+    maxIterations: 1000,
+    vectorScoreDirection: 'relevance',
+  };
+  const row = await buildStoreRow(
+    context,
+    { namespace: EMAIL_NAMESPACE, key: 'profile' },
+    { name: 'Jane' },
+    { createdAt: 'T0', updatedAt: 'T0', rev: 'r0' },
+  );
+  // Spread into the plain record the mock table holds.
+  return { ...row };
 }
 
-describe('a "." label round-trips wherever upstream accepts it', () => {
-  it('through store.batch()', async () => {
+/**
+ * From `@langchain/langgraph-checkpoint@1.2.0` upstream refuses a `.` label on
+ * every operation of every route — `InMemoryStore.batch` and
+ * `AsyncBatchedStore` check it on a read as on a write — so a graph keying
+ * memories by e-mail address is refused there, and every write refuses it
+ * here. A row such a put wrote before the rule, through a `batch` that
+ * accepted one, stays readable, searchable and removable through this
+ * store's own routes, so no stored memory is stranded.
+ */
+async function emailNamespaceStaysReadable(route: ItemRoute): Promise<void> {
+  await expect(route.put(EMAIL_NAMESPACE, 'profile', { name: 'Janet' })).rejects.toThrow();
+  expect((await route.get(EMAIL_NAMESPACE, 'profile'))?.value).toEqual({ name: 'Jane' });
+  expect((await route.search(['memories'])).map((item) => item.namespace)).toEqual([
+    EMAIL_NAMESPACE,
+  ]);
+  await route.delete(EMAIL_NAMESPACE, 'profile');
+  expect(await route.get(EMAIL_NAMESPACE, 'profile')).toBeNull();
+}
+
+describe('a "." label is refused on a write and still read, searched and deleted', () => {
+  it('through store.batch(), with the refusal named', async () => {
     const { store, mock } = storeWithMock();
-    oneRowTable(mock);
-    await roundTripAnEmailNamespace(viaBatch(store));
+    oneRowTable(mock, await legacyEmailRow());
+    await expect(
+      viaBatch(store).put(EMAIL_NAMESPACE, 'profile', { name: 'Janet' }),
+    ).rejects.toMatchObject(refusal('namespace element'));
+    await emailNamespaceStaysReadable(viaBatch(store));
     expect(deletedKeys(mock)).toHaveLength(1);
   });
 });
@@ -221,7 +259,8 @@ describe('a "." label round-trips wherever upstream accepts it', () => {
 /**
  * LangGraph's runtime never calls a store's own `get`/`put`/`search`: it wraps
  * the store in upstream's `AsyncBatchedStore`, whose methods only enqueue an
- * operation, and flushes the queue through the store's `batch()`
+ * operation (after checking its namespace, from 1.2.0), and flushes the queue
+ * through the store's `batch()`
  * (`@langchain/langgraph` `dist/pregel/loop.js:311`,
  * `@langchain/langgraph-checkpoint@1.1.5` `dist/store/batch.js:34-95`). The
  * queue only drains while the wrapper runs, so each test starts it and stops it.
@@ -264,11 +303,20 @@ describe('through AsyncBatchedStore, as a running graph uses the store', () => {
     expect(mock.calls()).toHaveLength(0);
   });
 
-  it('round-trips put, get, search and delete under a "." label', async () => {
+  /**
+   * On `@langchain/langgraph-checkpoint@1.2.0` the wrapper's own `put` refuses
+   * the label before this store sees it, with upstream's `InvalidNamespaceError`;
+   * on 1.1.5 it enqueues the put and this store refuses it. Either way nothing
+   * is written. Whether the wrapper lets a read or a delete under such a label
+   * through is its own version's rule — 1.2.0 refuses those too — and this
+   * store's own answer is pinned above, through `store.batch()`.
+   */
+  it('refuses a put under a "." label', async () => {
     const { store, mock } = storeWithMock();
-    oneRowTable(mock);
-    await withBatched(store, roundTripAnEmailNamespace);
-    expect(deletedKeys(mock)).toHaveLength(1);
+    await withBatched(store, async (batched) => {
+      await expect(batched.put(EMAIL_NAMESPACE, 'profile', { name: 'Janet' })).rejects.toThrow();
+    });
+    expect(mock.calls()).toHaveLength(0);
   });
 });
 

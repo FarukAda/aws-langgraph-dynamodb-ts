@@ -46,6 +46,11 @@ const REFUSED: [string, Call, string][] = [
   ['put under the reserved root', (s) => s.put(['langgraph'], 'k', {}), 'namespace'],
   ['put below the reserved root', (s) => s.put(['langgraph', 'x'], 'k', {}), 'namespace'],
   ['put with "." in a label', (s) => s.put(['users', 'a.b'], 'k', {}), 'namespace element'],
+  [
+    'batch put with "." in a label',
+    (s) => s.batch([{ namespace: ['users', 'a.b'], key: 'k', value: {} }]),
+    'namespace element',
+  ],
   ['put: namespace before value', (s) => s.put(['a#b'], 'k', null as never), 'namespace element'],
   ['put: key before value', (s) => s.put(['ns'], '', 1 as never), 'key'],
   ['put: address before upstream rules', (s) => s.put(['a.b'], '', {}), 'key'],
