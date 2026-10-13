@@ -75,18 +75,17 @@ if (declared.length === 0) {
 // No --omit: the point of the build document is that nothing is filtered, and
 // it is also the only run in which the peers appear at all.
 //
-// --legacy-peer-deps, because `npm sbom` refuses a tree holding any invalid
-// edge, and this one holds one that `npm ci` accepts: vite (under the
-// LangGraph checkpoint-validation suite's vitest) declares an *optional* peer
-// on `yaml@^2.4.2`, which resolves to the `yaml@1` that depcheck's cosmiconfig
-// hoisted. The flag stops npm reading peer edges while it walks the tree, so
-// every installed package is still listed and only peer relationships are
-// missing from the dependency graph; a peer this package does not also list in
-// devDependencies (`@langchain/core`) is then reported there as extraneous.
-// The runtime document below takes its components' kind and scope from
-// package.json, not from those edges.
+// No --legacy-peer-deps either. `npm sbom` refuses a tree holding an invalid
+// edge, and this tree held one until depcheck left: vite (under the LangGraph
+// checkpoint-validation suite's vitest) declares an *optional* peer on
+// `yaml@^2.4.2`, which resolved to the `yaml@1` depcheck's cosmiconfig hoisted.
+// Should such an edge return, the flag makes npm skip peer edges while it
+// walks the tree, at the price of listing a peer this package does not also
+// hold as a devDependency (`@langchain/core`) as extraneous; the runtime
+// document below takes its components' kind and scope from package.json, not
+// from those edges, so it would survive that too.
 const build = JSON.parse(
-  execSync('npm sbom --sbom-format=cyclonedx --legacy-peer-deps', {
+  execSync('npm sbom --sbom-format=cyclonedx', {
     env: cleanEnv,
     stdio: ['ignore', 'pipe', 'inherit'],
     maxBuffer: 64 * 1024 * 1024,

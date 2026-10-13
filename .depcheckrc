@@ -1,7 +1,0 @@
-{
-  "ignores": [
-    "@types/jest",
-    "ts-jest",
-    "typedoc-plugin-markdown"
-  ]
-}
