@@ -567,6 +567,13 @@ DynamoDBSaver.putWrites | taskId=["a"] | throws VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId=null | throws VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId=undefined | throws VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId={} | throws VALIDATION field=taskId
+DynamoDBSaver.putWrites | taskPath="" | REACHED-WRITE (input accepted, write attempted)
+DynamoDBSaver.putWrites | taskPath="~pull, node" | REACHED-WRITE (input accepted, write attempted)
+DynamoDBSaver.putWrites | taskPath=123 | throws VALIDATION field=taskPath
+DynamoDBSaver.putWrites | taskPath=["a"] | throws VALIDATION field=taskPath
+DynamoDBSaver.putWrites | taskPath=null | throws VALIDATION field=taskPath
+DynamoDBSaver.putWrites | taskPath=undefined | REACHED-WRITE (input accepted, write attempted)
+DynamoDBSaver.putWrites | taskPath={} | throws VALIDATION field=taskPath
 DynamoDBSaver.putWrites | writes="x" | throws VALIDATION field=writes
 DynamoDBSaver.putWrites | writes=[["",1]] | throws VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[["a#b",1]] | throws VALIDATION field=channel

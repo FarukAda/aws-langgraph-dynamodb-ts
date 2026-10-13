@@ -114,6 +114,12 @@ export interface CheckpointWriteRow {
    * is exactly the identity they were stored under.
    */
   occurrence?: number;
+  /**
+   * The serialized path of the task that made the write, which leads the
+   * order writes are read back in (see {@link compareWriteOrder}). Absent on a
+   * row a LangGraph before 1.5 wrote, which sorts as the empty path, first.
+   */
+  taskPath?: string;
   value: PayloadDescriptor;
   ttl?: number;
 }
@@ -472,6 +478,8 @@ export interface CheckpointRowsSource {
 export interface WriteRowsSource {
   readonly address: CheckpointLocation;
   readonly taskId: string;
+  /** Stamped on every row when given; see `CheckpointWriteRow.taskPath`. */
+  readonly taskPath?: string | undefined;
   readonly writes: PendingWrite[];
   readonly signal: AbortSignal | undefined;
 }
@@ -641,7 +649,7 @@ export async function buildWriteRows(
   ttlTimestamp?: number,
 ): Promise<CheckpointWriteRow[]> {
   const { threadId, checkpointNs, checkpointId } = request.address;
-  const { taskId } = request;
+  const { taskId, taskPath } = request;
   const deps = codecDepsOf(context, request.signal);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteRow[] = [];
@@ -667,6 +675,7 @@ export async function buildWriteRows(
         taskId,
         index,
         channel,
+        ...(taskPath === undefined ? {} : { taskPath }),
         // Shared by every row this call writes. Positions shift when a retried
         // task's write mix changes, so a channel an earlier call already
         // committed can land at a second index and be replayed twice; the group
@@ -749,10 +758,11 @@ export function parseMetaRow(raw: AttributeMap): CheckpointMetaRow | undefined {
  * Accepts: `raw` — any row the prefix query returned.
  *
  * Returns: the row as a {@link CheckpointWriteRow}, or `undefined` for one
- * that is not a pending write of this adapter's. `writeGroup`, `occurrence`
- * and `index` are not judged: a row written before they existed carries
- * none, and {@link dropSupersededWrites} reads their absence as the identity
- * it has.
+ * that is not a pending write of this adapter's. `writeGroup`, `occurrence`,
+ * `taskPath` and `index` are not required: a row written before they existed
+ * carries none, and {@link dropSupersededWrites} and {@link compareWriteOrder}
+ * read their absence as the identity and the order it has; a `taskPath` that
+ * is present but not a string is not this adapter's.
  *
  * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote, checked
  * first, so a newer row is refused rather than judged against attribute
@@ -763,6 +773,7 @@ export function parseWriteRow(raw: AttributeMap): CheckpointWriteRow | undefined
   const isWrite =
     typeof raw.taskId === 'string' &&
     typeof raw.channel === 'string' &&
+    (raw.taskPath === undefined || typeof raw.taskPath === 'string') &&
     typeof raw.value === 'object' &&
     raw.value !== null;
   return isWrite ? (raw as CheckpointWriteRow) : undefined;
@@ -848,6 +859,59 @@ export async function readMetadata(
 }
 
 /**
+ * Compare two strings by Unicode code point — Python's `str` order, and the
+ * order the reference's `compareWritesSortKeys` uses — rather than by UTF-16
+ * code unit, which puts an astral character (a surrogate pair, `0xD800`
+ * upward) before every BMP code point above it. An unpaired surrogate
+ * compares as its own value, as the reference compares it.
+ *
+ * Accepts: any two strings.
+ *
+ * Returns: negative, zero or positive, as a sort comparator; a string that is
+ * a prefix of the other sorts first.
+ *
+ * Throws: nothing.
+ */
+export function compareByCodePoint(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const left = a.codePointAt(i) as number;
+    const right = b.codePointAt(j) as number;
+    if (left !== right) return left < right ? -1 : 1;
+    i += left > 0xffff ? 2 : 1;
+    j += right > 0xffff ? 2 : 1;
+  }
+  if (i >= a.length && j >= b.length) return 0;
+  return i >= a.length ? -1 : 1;
+}
+
+/**
+ * The order a checkpoint's writes are read back in: the reference's
+ * `writesSortKey` (`@langchain/langgraph-checkpoint@1.2.0`) — task path, then
+ * task id, both by code point, then index numerically, so a special channel's
+ * negative index leads its task's regular writes — with the channel as a last
+ * tie-break the reference never needs, since two channels at one index of one
+ * task are two rows here and one map slot there. A row with no path, written
+ * by a LangGraph before 1.5, sorts as the empty path, first, as the
+ * reference's own pre-path records do.
+ *
+ * Accepts: two WRITE rows of one checkpoint.
+ *
+ * Returns: negative, zero or positive, as a sort comparator.
+ *
+ * Throws: nothing.
+ */
+export function compareWriteOrder(a: CheckpointWriteRow, b: CheckpointWriteRow): number {
+  return (
+    compareByCodePoint(a.taskPath ?? '', b.taskPath ?? '') ||
+    compareByCodePoint(a.taskId, b.taskId) ||
+    a.index - b.index ||
+    compareByCodePoint(a.channel, b.channel)
+  );
+}
+
+/**
  * Decode WRITE items into `[taskId, channel, value]` pending-write tuples.
  *
  * Accepts: `items` — one checkpoint's WRITE rows, in any order; empty is empty.
@@ -855,7 +919,8 @@ export async function readMetadata(
  * the downloads, all of which share it.
  *
  * Returns: the writes LangGraph replays, first-write-wins already resolved by
- * `dropSupersededWrites`, in the order the surviving rows were read.
+ * `dropSupersededWrites`, in the order the reference reads them back —
+ * {@link compareWriteOrder} — whatever order the rows arrived in.
  *
  * Throws: whatever a decode throws — the first one, with the rest allowed to
  * settle.
@@ -870,7 +935,7 @@ export async function toPendingWrites(
   signal?: AbortSignal,
 ): Promise<CheckpointPendingWrite[]> {
   const deps = codecDepsOf(context, signal);
-  const live = dropSupersededWrites(items);
+  const live = [...dropSupersededWrites(items)].sort(compareWriteOrder);
   const values = await mapWithConcurrency(
     live,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,

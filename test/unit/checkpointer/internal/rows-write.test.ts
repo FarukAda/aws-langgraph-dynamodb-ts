@@ -243,6 +243,33 @@ describe('buildWriteRows', () => {
   });
 });
 
+describe('buildWriteRows carries the task path', () => {
+  const at = { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'ckpt-1' } };
+
+  it('stamps the path on every row of a call that gives one, and no attribute on one that gives none', async () => {
+    const withPath = await buildWriteRows(
+      context(),
+      parsePutWritesRequest(
+        at,
+        [
+          ['a', 1],
+          ['b', 2],
+        ],
+        'task-7',
+        '~pull, node',
+      ),
+      'nonce-1',
+    );
+    expect(withPath.map((row) => row.taskPath)).toEqual(['~pull, node', '~pull, node']);
+    const without = await buildWriteRows(
+      context(),
+      parsePutWritesRequest(at, [['a', 1]], 'task-7'),
+      'nonce-2',
+    );
+    expect(without[0]).not.toHaveProperty('taskPath');
+  });
+});
+
 describe('resolveWriteIndices', () => {
   it('treats a channel colliding with Object.prototype as regular, not special', () => {
     expect(resolveWriteIndices([['constructor', 'v']])).toEqual([

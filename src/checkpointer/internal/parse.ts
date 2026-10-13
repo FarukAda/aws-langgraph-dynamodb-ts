@@ -43,6 +43,7 @@ declare const checkpointNsBrand: unique symbol;
 declare const checkpointIdBrand: unique symbol;
 declare const taskIdBrand: unique symbol;
 declare const writeChannelBrand: unique symbol;
+declare const taskPathBrand: unique symbol;
 
 /**
  * A thread id checked as the partition key it becomes. {@link parseThreadId}
@@ -63,6 +64,8 @@ export type TaskId = string & { readonly [taskIdBrand]: true };
 
 /** A pending write's channel checked as the key segment it becomes. Built only by {@link parseWriteChannel}. */
 export type WriteChannel = string & { readonly [writeChannelBrand]: true };
+/** The serialized path of the task that made a write, as LangGraph 1.5 hands it to `putWrites`; see {@link parseTaskPath}. */
+export type TaskPath = string & { readonly [taskPathBrand]: true };
 
 /**
  * Parse a thread id.
@@ -145,6 +148,30 @@ export function parseTaskId(value: unknown): TaskId {
  */
 export function parseWriteChannel(value: unknown): WriteChannel {
   return parseIdentifier(value, KEY_SEPARATOR, 'channel', MAX_WRITE_CHANNEL_BYTES) as WriteChannel;
+}
+
+/**
+ * Parse the task path a `putWrites` call carries.
+ *
+ * LangGraph 1.5 (`@langchain/langgraph-checkpoint@1.2.0`) hands `putWrites`
+ * the serialized path of the task that made the writes — `~pull, <node>`,
+ * `~push, 0000000003, …` — as a fourth argument, and reads a checkpoint's
+ * writes back ordered by it first (`writesSortKey`: path, then task id, then
+ * index). It is stored as given and never keyed on, so it has no byte cap
+ * and no separator rule: it leads a sort, not a sort key.
+ *
+ * Accepts: `value` — a string, the empty string included (a write made by
+ * no task); `undefined` for a call that carries none, which every LangGraph
+ * before 1.5 makes.
+ *
+ * Returns: `value` as a {@link TaskPath}, or `undefined` when none was given.
+ *
+ * Throws: `VALIDATION` naming `taskPath` for any other value.
+ */
+export function parseTaskPath(value: unknown): TaskPath | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw validationError('taskPath must be a string', 'taskPath');
+  return value as TaskPath;
 }
 
 /** The root namespace, which a config that names none addresses. */
@@ -324,6 +351,8 @@ export function parsePutRequest(
 export interface PutWritesRequest {
   readonly address: CheckpointAddress;
   readonly taskId: TaskId;
+  /** The task's serialized path, when the call carried one; see {@link parseTaskPath}. */
+  readonly taskPath: TaskPath | undefined;
   /** A copy of the caller's writes, each reduced to its channel and value. */
   readonly writes: PendingWrite<WriteChannel>[];
   readonly signal: AbortSignal | undefined;
@@ -382,14 +411,15 @@ function assertWriteKeyFits(
  * checkpoint, since writes attach to one. `writes` — an array of
  * `[channel, value]` arrays; the value, and any element past the second, are
  * unconstrained, as upstream's type places no rule on them. `taskId` — parsed
- * as the key segment it becomes.
+ * as the key segment it becomes. `taskPath` — as {@link parseTaskPath}; absent
+ * from a LangGraph before 1.5.
  *
  * Returns: the request, with a fresh array of fresh tuples, so a caller
  * changing its own array while the call awaits changes nothing that was
  * checked.
  *
  * Throws: `VALIDATION`, before anything is encoded or uploaded, in this order:
- * `taskId`; as {@link parseThreadConfig}; `checkpoint_id` when the config names
+ * `taskId`; `taskPath`; as {@link parseThreadConfig}; `checkpoint_id` when the config names
  * none; `writes` for a non-array or an entry that is not one; `channel` for any
  * malformed channel; `sortKey` for any write whose composed key passes the cap.
  */
@@ -397,8 +427,10 @@ export function parsePutWritesRequest(
   config: RunnableConfig,
   writes: PendingWrite[],
   taskId: string,
+  taskPath?: string,
 ): PutWritesRequest {
   const parsedTaskId = parseTaskId(taskId);
+  const parsedTaskPath = parseTaskPath(taskPath);
   const { address, signal } = parseThreadConfig(config);
   if (address.checkpointId === undefined) {
     throw validationError('checkpoint_id is required to store writes', 'checkpoint_id');
@@ -414,6 +446,7 @@ export function parsePutWritesRequest(
   return {
     address: target,
     taskId: parsedTaskId,
+    taskPath: parsedTaskPath,
     writes: writes.map(([, value], index): PendingWrite<WriteChannel> => [channels[index], value]),
     signal,
   };

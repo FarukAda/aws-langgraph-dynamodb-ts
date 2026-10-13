@@ -54,7 +54,11 @@ function startWalk(channels: string[]): Walk {
 
 /**
  * Collect one ancestor's pending writes for the channels still being walked,
- * newest task first within the ancestor, matching the reference walk.
+ * in the order the read established — the reference's `writesSortKey`: task
+ * path, then task id, then index, which only the read can establish, since a
+ * pending-write tuple carries no path — pushed last-first so the final
+ * reversal in {@link deltaChannelHistory} restores it, matching the reference
+ * walk.
  */
 function collectWrites(tuple: CheckpointTuple, walk: Walk): void {
   const perChannel: Record<string, CheckpointPendingWrite[]> = {};
@@ -64,7 +68,6 @@ function collectWrites(tuple: CheckpointTuple, walk: Walk): void {
   }
   for (const channel of Object.keys(perChannel)) {
     const block = perChannel[channel];
-    block.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
     for (let i = block.length - 1; i >= 0; i -= 1) walk.writes[channel].push(block[i]);
   }
 }

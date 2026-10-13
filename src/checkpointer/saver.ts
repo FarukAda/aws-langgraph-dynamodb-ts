@@ -209,11 +209,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `[channel, value]` arrays, one row each: a special channel's row is
    * written alongside the rest, a regular row at most 32 at a time; an empty
    * list writes nothing. `taskId` — validated as the key segment it becomes.
+   * `taskPath` — the task's serialized path, which LangGraph 1.5 passes
+   * (`@langchain/langgraph-checkpoint@1.2.0`) and earlier LangGraphs do not;
+   * stored beside every row of the call, and the first key of the order
+   * `getTuple`, `list` and `getDeltaChannelHistory` read a checkpoint's
+   * writes back in (the reference's `writesSortKey`: path, then task id, then
+   * index, strings compared by code point). A row written without one sorts
+   * as the empty path, first.
    *
    * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
    * a failure.
    *
-   * Throws: `VALIDATION` naming `taskId` for a malformed task id; `config`,
+   * Throws: `VALIDATION` naming `taskId` for a malformed task id, or
+   * `taskPath` for a path that is not a string; `config`,
    * `configurable` or `signal` for a config of the wrong shape; `thread_id`,
    * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier, and `checkpoint_id` when the config names none; `writes` for
@@ -234,10 +242,15 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * before the write, when a failed write cannot be verified, or in one
    * double-fault interleaving (see the README's S3 offloading notes).
    */
-  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+  async putWrites(
+    config: RunnableConfig,
+    writes: PendingWrite[],
+    taskId: string,
+    taskPath?: string,
+  ): Promise<void> {
     return guardPublic(
       'saver.putWrites',
-      () => putWritesAction(this.context, config, writes, taskId),
+      () => putWritesAction(this.context, config, writes, taskId, taskPath),
       this.context.tableName,
     );
   }

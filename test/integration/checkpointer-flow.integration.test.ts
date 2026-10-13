@@ -4,7 +4,12 @@ import {
   DynamoDBClient,
   waitUntilTableExists,
 } from '@aws-sdk/client-dynamodb';
-import { ERROR, type Checkpoint, type CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import {
+  ERROR,
+  type Checkpoint,
+  type CheckpointMetadata,
+  type PendingWrite,
+} from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver } from '../../src/index';
 
@@ -208,6 +213,50 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
 
       const listed = await ids(saver.list({ configurable: {} }));
       expect(listed.filter((id) => id.startsWith('o'))).toEqual(['o1', 'o2', 'o3']);
+
+      await saver.deleteThread(threadId);
+    });
+
+    /**
+     * The order `@langchain/langgraph-checkpoint@1.2.0` reads writes back in
+     * (`writesSortKey`): task path, then task id, then index, strings by code
+     * point — the scenario its validation suite pins, pathless writes first
+     * and the astral path last.
+     */
+    it('returns pending writes in writesSortKey order: path, then task id, then index, by code point', async () => {
+      const threadId = 'thread-writes-sort-key';
+      const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
+      await saver.put(config, checkpoint('w2', 'a'), metadata);
+      const at = { configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'w2' } };
+      const eleven = Array.from({ length: 11 }, (_u, i) => ['ch', `a${i}`] as PendingWrite);
+      await saver.putWrites(at, eleven, 'ffffffff-ffff-ffff-ffff-ffffffffffff', '~pull, 02');
+      await saver.putWrites(at, [['ch', 'input']], '88888888-8888-8888-8888-888888888888');
+      await saver.putWrites(at, [['ch', 'b']], '00000000-0000-0000-0000-000000000000', '~pull, 01');
+      await saver.putWrites(
+        at,
+        [['ch', 'bmp']],
+        '99999999-9999-9999-9999-999999999999',
+        '~pull, \uE000',
+      );
+      await saver.putWrites(
+        at,
+        [['ch', 'astral']],
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '~pull, \u{10000}',
+      );
+      const expected = ['input', 'b', ...eleven.map(([, value]) => value), 'bmp', 'astral'];
+
+      const tuple = await saver.getTuple(at);
+      expect(tuple?.pendingWrites?.map((write) => write[2])).toEqual(expected);
+      const listed = [];
+      for await (const t of saver.list({
+        configurable: { thread_id: threadId, checkpoint_ns: '' },
+      })) {
+        listed.push(t);
+      }
+      expect(listed.find((t) => t.checkpoint.id === 'w2')?.pendingWrites?.map((w) => w[2])).toEqual(
+        expected,
+      );
 
       await saver.deleteThread(threadId);
     });

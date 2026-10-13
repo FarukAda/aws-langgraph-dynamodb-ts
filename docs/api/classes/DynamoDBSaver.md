@@ -57,7 +57,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:275](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L275)
+Defined in: [checkpointer/saver.ts:288](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L288)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -112,7 +112,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:355](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L355)
+Defined in: [checkpointer/saver.ts:368](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L368)
 
 Release owned resources.
 
@@ -136,7 +136,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:391](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L391)
+Defined in: [checkpointer/saver.ts:404](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L404)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -182,7 +182,7 @@ the shorter rule would expire. Raising the `ttl` is safe at once.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:324](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L324)
+Defined in: [checkpointer/saver.ts:337](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L337)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.
@@ -423,9 +423,9 @@ rows named are not deleted with them: they are left to the lifecycle rule
 
 ### putWrites()
 
-> **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
+> **putWrites**(`config`, `writes`, `taskId`, `taskPath?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:237](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L237)
+Defined in: [checkpointer/saver.ts:245](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L245)
 
 Store a task's pending writes for the checkpoint `config` names.
 
@@ -435,11 +435,19 @@ Accepts: `config` — shaped as [getTuple](#gettuple) requires, naming a
 `[channel, value]` arrays, one row each: a special channel's row is
 written alongside the rest, a regular row at most 32 at a time; an empty
 list writes nothing. `taskId` — validated as the key segment it becomes.
+`taskPath` — the task's serialized path, which LangGraph 1.5 passes
+(`@langchain/langgraph-checkpoint@1.2.0`) and earlier LangGraphs do not;
+stored beside every row of the call, and the first key of the order
+`getTuple`, `list` and `getDeltaChannelHistory` read a checkpoint's
+writes back in (the reference's `writesSortKey`: path, then task id, then
+index, strings compared by code point). A row written without one sorts
+as the empty path, first.
 
 Returns: nothing. Losing a first-write-wins race is a normal outcome, not
 a failure.
 
-Throws: `VALIDATION` naming `taskId` for a malformed task id; `config`,
+Throws: `VALIDATION` naming `taskId` for a malformed task id, or
+`taskPath` for a path that is not a string; `config`,
 `configurable` or `signal` for a config of the wrong shape; `thread_id`,
 `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier, and `checkpoint_id` when the config names none; `writes` for
@@ -471,6 +479,10 @@ double-fault interleaving (see the README's S3 offloading notes).
 `PendingWrite`[]
 
 ##### taskId
+
+`string`
+
+##### taskPath?
 
 `string`
 

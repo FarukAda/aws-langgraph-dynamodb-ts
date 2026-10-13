@@ -77,7 +77,14 @@ function write(taskId: string, channel: string, value: string): CheckpointPendin
 }
 
 describe('deltaChannelHistory', () => {
-  it('returns the walked writes oldest ancestor first, ascending by task id within one', async () => {
+  /**
+   * Within one ancestor the writes keep the order the read established —
+   * task path, then task id, then index (`writesSortKey`) — which only the
+   * read can establish, since a pending-write tuple carries no path. The walk
+   * must not sort them again by task id, which `t2` before `t1` here would
+   * show.
+   */
+  it('returns the walked writes oldest ancestor first, in the order the read established within one', async () => {
     const { context, getTuple } = walkOver([
       { id: 'c3', parent: configFor('c2') },
       {
@@ -97,8 +104,8 @@ describe('deltaChannelHistory', () => {
     expect(history.messages.writes).toEqual([
       write('s1', 'messages', 'old'),
       write('s2', 'messages', 'newer'),
-      write('t1', 'messages', 'a'),
       write('t2', 'messages', 'b'),
+      write('t1', 'messages', 'a'),
     ]);
     expect(history.messages.seed).toEqual(['seed']);
   });

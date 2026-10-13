@@ -39,8 +39,10 @@ const nextWriteGroup = createUlidFactory();
  * Accepts: `config` — must name a `checkpoint_id`, since writes always attach
  * to a checkpoint. `writes` — one task's, in order; their channels are
  * validated before anything is encoded or uploaded. `taskId` — validated as the
- * sort-key segment it becomes. `config.signal` — cancels the writes' retries;
- * checked before anything is encoded.
+ * sort-key segment it becomes. `taskPath` — the task's serialized path, which
+ * LangGraph 1.5 passes and earlier LangGraphs do not; stored beside every row
+ * of the call, to lead the order the writes are read back in. `config.signal`
+ * — cancels the writes' retries; checked before anything is encoded.
  *
  * Returns: nothing. Every write is attempted; a regular write that loses its
  * first-write-wins race is a normal outcome, not a failure.
@@ -48,8 +50,8 @@ const nextWriteGroup = createUlidFactory();
  * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape; `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, and `checkpoint_id` when the config
- * names none; `taskId`, `writes`, `channel`, `sortKey` — every one of them
- * before anything is encoded or uploaded — `payload` or `s3Key`; the first
+ * names none; `taskId`, `taskPath`, `writes`, `channel`, `sortKey` — every one
+ * of them before anything is encoded or uploaded — `payload` or `s3Key`; the first
  * genuine write failure, after every write has settled and the cleanup has
  * run.
  *
@@ -71,8 +73,9 @@ export async function putWrites(
   config: RunnableConfig,
   writes: PendingWrite[],
   taskId: string,
+  taskPath?: string,
 ): Promise<void> {
-  const request = parsePutWritesRequest(config, writes, taskId);
+  const request = parsePutWritesRequest(config, writes, taskId, taskPath);
   if (request.writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const items = await buildWriteRows(context, request, nextWriteGroup(), ttlTimestamp);

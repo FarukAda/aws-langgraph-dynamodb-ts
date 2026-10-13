@@ -103,6 +103,7 @@ describe('the source tree', () => {
       'StorableMessages',
       'StoreAddress',
       'TaskId',
+      'TaskPath',
       'ThreadId',
       'WriteChannel',
     ]);

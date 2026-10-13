@@ -130,6 +130,48 @@ describe('fetchPendingWrites', () => {
   });
 
   /**
+   * The query returns the rows in sort-key order — task id first — and the
+   * fetch reorders them by task path first, as the reference reads them.
+   */
+  it('returns the writes in writesSortKey order, not in the order the query returned them', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const first = await writeItems(
+      context(client),
+      't',
+      '',
+      'c1',
+      'task-a',
+      [['ch', 'a']],
+      'n1',
+      undefined,
+      undefined,
+      '~pull, 02',
+    );
+    const second = await writeItems(
+      context(client),
+      't',
+      '',
+      'c1',
+      'task-b',
+      [['ch', 'b']],
+      'n2',
+      undefined,
+      undefined,
+      '~pull, 01',
+    );
+    mock.on(QueryCommand).resolves({ Items: [...first, ...second] });
+    const pending = await fetchPendingWrites(context(client), {
+      threadId: 't',
+      checkpointNs: '',
+      checkpointId: 'c1',
+    });
+    expect(pending).toEqual([
+      ['task-b', 'ch', 'b'],
+      ['task-a', 'ch', 'a'],
+    ]);
+  });
+
+  /**
    * A row under a checkpoint's `WRITE#` prefix that lacks the task id or
    * channel this adapter writes was not written by it. Handed on as it is, it
    * reached LangGraph as `[undefined, undefined, value]`; it is parsed at the
