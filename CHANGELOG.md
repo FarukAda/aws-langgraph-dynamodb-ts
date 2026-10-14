@@ -7,18 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-14
+
 ### Upgrading from 0.9.x
 
 No data migration: this release reads a table `0.9.x` wrote as it is. Take a backup before upgrading a live table, and run one version against a table at a time. What code changes, most common first — in full in the README's [upgrade guide](README.md#migrating-from-earlier-versions):
 
 - **Errors are one class, `DynamoDBLangGraphError`** (capital *B*). The subclasses are gone: test with `isDynamoDBLangGraphError(error)`, which accepts what a `catch` binds, and branch on `error.code`. A validation error names its input in `context.field`, a batch or compensation error's counts are under `details`, and a raw AWS SDK error arrives wrapped under its classified code.
 - **Dependencies.** `@langchain/langgraph` is no longer a peer, so depend on it yourself. The peer floors are `@langchain/core` `^1.2.17` and `@langchain/langgraph-checkpoint` `^1.2.0`, the packages LangGraph 1.5 ships with (a LangGraph 1.4 application can take `@langchain/langgraph-checkpoint` 1.2.0 too), and the optional `@aws-sdk/client-s3` `^3.1151.0`; the dependencies are `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1151.0`, and the new `@aws-sdk/util-dynamodb`.
-- **Inputs now refused with `VALIDATION`**: an option key an options object this package defines does not read, an identifier over its byte cap or holding a C1 control character, a malformed `ttl` or `s3.keyPrefix`, an injected client whose translation options misread rows, and the store's `indexName` and `indexShards`.
+- **Inputs now refused with `VALIDATION`**: an option key an options object this package defines does not read, an identifier over its byte cap or holding a C1 control character, a malformed `ttl` or `s3.keyPrefix`, an injected client whose translation options misread rows, the store's `indexName` and `indexShards`, an `s3.maxDownloadBytes` below `s3.thresholdBytes`, and an offloaded payload larger than `s3.maxDownloadBytes`, refused at the write before it is uploaded.
+- **`history.getMessages` fails on `COMPRESSION_LIMIT` under `onCorruptMessage: 'skip'` too.** A row an earlier release compressed past a custom `compression.maxDecompressedBytes` is intact, not corrupt: raise the cap to read it.
 - **A `.` in a store namespace label is refused on every write**, a `batch()` put included, as upstream refuses it from `@langchain/langgraph-checkpoint` 1.2.0. Rows under such a label stay readable and removable through the store's own methods; rename them before moving to LangGraph 1.5, whose store wrapper refuses the label on a read too.
 - **Return shapes.** `history.listSessions()` returns `{ sessions, nextCursor? }`, and `store.batch()` answers a put or a delete with `null`.
 - **`history.addMessages` fails with `COMPENSATION_FAILED`** when it cannot establish a chunk's outcome. Do not retry it; run `reconcileMessageCount`.
 - **A row a newer release wrote raises `FORMAT_UNSUPPORTED`** instead of being skipped.
 - **`ensureS3LifecycleRule()` writes a different rule** — two days past the `ttl`, with noncurrent-version and delete-marker rules — reads `s3:GetBucketVersioning`, and requires a `keyPrefix` ending in `/`.
+- **Removed exports.** `SessionBackend` (use `MultiSessionHistory`), and the `S3ClientLike` and `S3CommandLike` types, which no public option or method took.
 - **Packaging.** `import` loads an ES-module build and `require` a CommonJS one; use named imports.
 
 ### Added
@@ -1131,7 +1135,8 @@ A maintenance release.
 
 ---
 
-[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.2...HEAD
+[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.2...v1.0.0
 [1.0.0-rc.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...v1.0.0-rc.1
 [0.9.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.8.0...v0.9.0
