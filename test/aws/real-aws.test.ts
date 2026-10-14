@@ -236,16 +236,18 @@ describe('DynamoDB adapters against real AWS', () => {
     expect(remaining.Items ?? []).toHaveLength(0);
   });
 
-  it('stamps a uniform ttl across meta, payload, and write items when ttl is configured', async () => {
+  it('stamps the ttl on the meta, payload and write rows: meta and payload together, the write at its own time', async () => {
     const ttlSaver = new DynamoDBSaver({ tableName, clientConfig, ttl: { seconds: 3600 } });
     const threadId = 'ttl-checkpoint';
     const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
+    const beforePut = Math.floor(Date.now() / 1000);
     await ttlSaver.put(config, checkpoint('ttlc1'), { source: 'loop', step: 1, parents: {} });
     await ttlSaver.putWrites(
       { configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'ttlc1' } },
       [['ch', 'v']],
       'task-ttl',
     );
+    const afterWrites = Math.floor(Date.now() / 1000);
     ttlSaver.destroy();
 
     const doc = DynamoDBDocument.from(admin);
@@ -256,10 +258,22 @@ describe('DynamoDB adapters against real AWS', () => {
       // Consistent: see the note on the chat-history ttl probe above.
       ConsistentRead: true,
     });
-    const ttls = new Set((items.Items ?? []).map((it) => it.ttl));
+    const ttlOf = (prefix: string): number => {
+      const row = (items.Items ?? []).find((it) => String(it.SK).startsWith(prefix));
+      const ttl = row?.ttl;
+      if (typeof ttl !== 'number') throw new Error(`no ${prefix} row carrying a numeric ttl`);
+      return ttl;
+    };
     expect(items.Items).toHaveLength(3);
-    expect(ttls.size).toBe(1);
-    expect([...ttls][0]).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    // META and PAYLOAD are one transaction stamped from one clock reading, so
+    // they agree. The write is a later call stamping its own reading: never
+    // earlier than the checkpoint's, and within this test's own span. Readers
+    // serve a write row only while the META row is live (README, TTL), so the
+    // write's own ttl is a floor on its storage, not what decides its visibility.
+    expect(ttlOf('PAYLOAD#')).toBe(ttlOf('META#'));
+    expect(ttlOf('META#')).toBeGreaterThanOrEqual(beforePut + 3600);
+    expect(ttlOf('WRITE#')).toBeGreaterThanOrEqual(ttlOf('META#'));
+    expect(ttlOf('WRITE#')).toBeLessThanOrEqual(afterWrites + 3600);
   });
 
   it('putWrites is first-write-wins: a repeated write to the same index keeps the original', async () => {
