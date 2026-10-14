@@ -3,11 +3,12 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    # Raise a range in package.json only when the new version falls outside it.
-    # This package is a library: a dependency or peer floor moves in a release
-    # the CHANGELOG announces, never in a routine update (README, *Supported
-    # runtimes and peers*).
-    versioning-strategy: increase-if-necessary
+    # Raise the range in package.json with every update, so the ranges always
+    # name the releases this repository tests against and `npm-check-updates`
+    # has nothing to report. Dependabot never touches peerDependencies: a peer
+    # floor is raised by hand, in a major, and announced in that release's
+    # CHANGELOG (README, *Supported runtimes and peers*).
+    versioning-strategy: increase
     schedule:
       interval: weekly
       day: monday
@@ -17,13 +18,6 @@ updates:
     # Security updates are not delayed: cooldown applies to version updates only.
     cooldown:
       default-days: 7
-    ignore:
-      # Dev-only (examples/live-agent.mjs). langchain 1.5.12 and later raise
-      # their @langchain/core peer above this package's declared floor, so the
-      # `peer dependency floors` CI job cannot install the floor next to them.
-      # Lift this when the @langchain/core floor moves in a release.
-      - dependency-name: langchain
-        versions: [">=1.5.12"]
     groups:
       aws-sdk:
         patterns:

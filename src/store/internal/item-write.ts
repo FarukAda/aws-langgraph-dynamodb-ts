@@ -35,6 +35,7 @@ import type { StoreAddress } from './parse.js';
 import {
   type ExistingRowMeta,
   existingFrom,
+  isLiveRow,
   itemRowKey,
   readExisting,
   REVISION_ATTRIBUTE,
@@ -489,9 +490,9 @@ type SwapOutcome =
  * and claim a race it never entered.
  *
  * On exhaustion the write proceeds unconditionally and warns. That is
- * deliberate: the fallback is precisely the pre-0.9.0 behaviour — one possible
- * orphan, reclaimed by a lifecycle rule — so pathological contention degrades
- * instead of turning a working put into an error. `createdAt` is refreshed from
+ * deliberate: the fallback costs at most one orphaned object, reclaimed by a
+ * lifecycle rule, so pathological contention degrades instead of turning a
+ * working put into an error. `createdAt` is refreshed from
  * each re-read so a row created by whoever won keeps its true creation time.
  *
  * Accepts: `record` — the row to commit, carrying this call's own `rev`.
@@ -542,8 +543,9 @@ export async function putWithRevisionSwap(
       if (record.rev !== undefined && observed.revision === record.rev) {
         return { ok: true, superseded: attempted };
       }
-      // A row that vanished between attempts (a concurrent delete) makes this a fresh creation.
-      record.createdAt = observed.exists
+      // A row that vanished between attempts (a concurrent delete), or that
+      // expired, makes this a fresh creation.
+      record.createdAt = isLiveRow(observed)
         ? (observed.createdAt ?? record.createdAt)
         : record.updatedAt;
     }
@@ -599,7 +601,7 @@ export function isRetryExhausted(error: Error): boolean {
  */
 export async function verifyWriteLanded(
   context: StoreContext,
-  record: { PK: string; SK: string; rev?: string },
+  record: RowKey & { rev?: string },
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, {
     key: rowKeyOf(record),

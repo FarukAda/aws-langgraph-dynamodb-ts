@@ -80,11 +80,13 @@ export async function writeItems(
   writeGroup: string,
   ttlTimestamp?: number,
   signal?: AbortSignal,
+  taskPath?: string,
 ): ReturnType<typeof buildWriteRows> {
   const request = parsePutWritesRequest(
     configFor(threadId, checkpointNs, checkpointId, signal),
     writes,
     taskId,
+    taskPath,
   );
   return buildWriteRows(context, request, writeGroup, ttlTimestamp);
 }

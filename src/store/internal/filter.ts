@@ -2,9 +2,9 @@
  * Hides the store's filter grammar.
  *
  * Which operators a search filter accepts, how each compares a stored field —
- * ordered comparisons only between like-typed values, an absent field matching
- * nothing — and whether an item passes a search's optional filter are decided
- * here, the same way whichever search path runs.
+ * ordered comparisons only between like-typed values, an absent field
+ * satisfying only `$ne` and `$nin` — and whether an item passes a search's
+ * optional filter are decided here, the same way whichever search path runs.
  */
 
 import { isDeepStrictEqual } from 'node:util';
@@ -61,21 +61,32 @@ function compareOrdered(
 /** A stored field's value, or `undefined` when the item has no such own property. */
 type ActualValue = JsonValue | undefined;
 
+/**
+ * Equality as the filter means it: deep for an object or an array, and for two
+ * numbers the reference's own `===`, under which `0` and `-0` are one number —
+ * `isDeepStrictEqual` tells them apart, and a `-0` a computation left on the
+ * filter side would then match no stored `0`. `NaN` stays equal to itself, as
+ * it is under deep equality; a stored `NaN` is a `null` after the JSON
+ * projection anyway.
+ */
+function equalValues(actual: ActualValue, expected: JsonValue): boolean {
+  if (typeof actual === 'number' && typeof expected === 'number') {
+    return actual === expected || (Number.isNaN(actual) && Number.isNaN(expected));
+  }
+  return isDeepStrictEqual(actual, expected);
+}
+
 const COMPARATORS: Record<string, (actual: ActualValue, expected: JsonValue) => boolean> = {
-  $eq: (actual, expected) => isDeepStrictEqual(actual, expected),
-  $ne: (actual, expected) => !isDeepStrictEqual(actual, expected),
+  $eq: (actual, expected) => equalValues(actual, expected),
+  $ne: (actual, expected) => !equalValues(actual, expected),
   $gt: (actual, expected) => compareOrdered(actual, expected, (order) => order > 0),
   $gte: (actual, expected) => compareOrdered(actual, expected, (order) => order >= 0),
   $lt: (actual, expected) => compareOrdered(actual, expected, (order) => order < 0),
   $lte: (actual, expected) => compareOrdered(actual, expected, (order) => order <= 0),
   $in: (actual, expected) =>
-    Array.isArray(expected)
-      ? expected.some((candidate) => isDeepStrictEqual(actual, candidate))
-      : false,
+    Array.isArray(expected) ? expected.some((candidate) => equalValues(actual, candidate)) : false,
   $nin: (actual, expected) =>
-    Array.isArray(expected)
-      ? !expected.some((candidate) => isDeepStrictEqual(actual, candidate))
-      : true,
+    Array.isArray(expected) ? !expected.some((candidate) => equalValues(actual, candidate)) : true,
 };
 
 /**
@@ -107,7 +118,7 @@ function isOperatorObject(condition: JsonValue): condition is { [key: string]: J
 }
 
 function matchesCondition(actual: ActualValue, condition: JsonValue): boolean {
-  if (!isOperatorObject(condition)) return isDeepStrictEqual(actual, condition);
+  if (!isOperatorObject(condition)) return equalValues(actual, condition);
   return Object.entries(condition).every(([operator, expected]) =>
     COMPARATORS[operator](actual, expected),
   );

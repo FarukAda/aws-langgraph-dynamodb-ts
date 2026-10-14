@@ -4,6 +4,9 @@ import { sharedJestConfig } from './jest.shared.config.mjs';
  * Unit tier: unit tests, static guards, type locks and property tests.
  * Coverage (100 % on every metric) is collected when jest runs with
  * `--coverage`, which `npm test` passes; a single-file run stays fast.
+ * ts-jest transpiles each test without type-checking it, so the type locks
+ * under `test/types` — compile-time assertions — are enforced by
+ * `npm run typecheck:all`, which runs beside this tier locally and in CI.
  */
 export default {
   ...sharedJestConfig,

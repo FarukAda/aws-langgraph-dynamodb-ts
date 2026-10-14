@@ -136,6 +136,27 @@ describe('commentViolations', () => {
     ]);
   });
 
+  it('refuses a coverage-ignore hint and a formatter-ignore, which switch a checker off too', () => {
+    const source = [
+      'function f() {',
+      '  /* istanbul ignore next */',
+      '  g();',
+      '  /* c8 ignore start */',
+      '  h();',
+      '  // v8 ignore next',
+      '  i();',
+      '  // prettier-ignore',
+      '  j();',
+      '}',
+    ].join('\n');
+    expect(commentViolations(source).map((violation) => violation.rule)).toEqual([
+      'directive',
+      'directive',
+      'directive',
+      'directive',
+    ]);
+  });
+
   it('refuses a trailing line-comment directive on the same line as code', () => {
     expect(commentViolations('console.log(1); // eslint-disable-line no-console')).toEqual([
       { line: 1, rule: 'directive' },

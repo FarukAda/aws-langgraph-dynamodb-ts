@@ -23,8 +23,8 @@ name to change everywhere at once (rule 37).
 A DynamoDB row is a `row` in every module-level name: `AttributeMap` for a row
 or key nothing has checked yet, `MessageRow`, `SessionRow`,
 `CheckpointMetaRow`, `StoreItemRow`. `item` names only the store's `Item`, so it
-appears in a name only under `src/store/`. `record` is not a noun anywhere in
-`src`. `backend` names only the store's vector backend: the history's type is
+appears in a module-level name only under `src/store/`. `record` is not a noun
+in any module-level name. `backend` names only the store's vector backend: the history's type is
 `MultiSessionHistory`, and `SessionBackend` stays exported as a deprecated
 alias of it until the next major release. The adapter's constructor parameter
 keeps the name `backend`, because the refusal of a bad one names that field
@@ -45,7 +45,12 @@ Negative. The renames touched over a hundred test files. Log and error
 messages still say "item" where they did — "not a checkpoint meta item" —
 because a caller can observe them and changing them is a behaviour change of
 its own. The guard reads names, not prose, so a comment can still call a row
-an item. The deprecated alias is one more exported name until it is removed.
+an item. The rule and the guard stop at module level: a parameter or a local
+variable inside a function may still be called `item` or `record` where it
+holds a row, because no caller ever sees it and renaming the several hundred
+of them would have been churn without a reader to serve; a function written
+or reworked since names its rows `row`. The deprecated alias is one more
+exported name until it is removed.
 
 Neutral. The public option `maxScanItems` and the AWS API's own names
 (`TransactWriteItems`, `BatchWriteItem`) keep theirs.

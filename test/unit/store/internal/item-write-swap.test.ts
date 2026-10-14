@@ -4,6 +4,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { persistRow, putWithRevisionSwap } from '../../../../src/store/internal/item-write';
 import type { ExistingRowMeta, StoreItemRow } from '../../../../src/store/internal/rows';
 import { landed } from '../../../shared/helpers/landed-swap';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const descriptor = (s3Key: string) => ({
   location: PayloadLocation.S3 as const,
@@ -63,7 +64,7 @@ function harness(options: {
         const next = options.reReads.shift();
         return {
           Item: next?.exists
-            ? { createdAt: next.createdAt, value: next.value, rev: next.revision }
+            ? { createdAt: next.createdAt, value: next.value, rev: next.revision, ttl: next.ttl }
             : undefined,
         };
       },
@@ -122,6 +123,19 @@ describe('putWithRevisionSwap', () => {
     await landed(putWithRevisionSwap(context as never, item, { exists: false }));
 
     expect(item.createdAt).toBe('ORIGINAL');
+  });
+
+  /** An expired row is no item to any reader, so the put over it is a creation (see `putItem`). */
+  it('starts createdAt afresh when the re-read finds the row expired', async () => {
+    const { context } = harness({
+      failures: 1,
+      reReads: [{ exists: true, revision: 'r1', createdAt: 'ORIGINAL', ttl: FROZEN_NOW_MS / 1000 }],
+    });
+    const item = record();
+
+    await landed(putWithRevisionSwap(context as never, item, { exists: false }));
+
+    expect(item.createdAt).toBe('T1');
   });
 
   it('falls back to an unconditional write after the attempt bound, and warns', async () => {

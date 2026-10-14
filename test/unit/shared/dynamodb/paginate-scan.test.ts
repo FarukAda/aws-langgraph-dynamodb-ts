@@ -20,7 +20,11 @@ describe('paginateScan', () => {
       { id: 'a' },
       { id: 'b' },
     ]);
-    expect(mock.commandCalls(ScanCommand)).toHaveLength(2);
+    const inputs = mock.commandCalls(ScanCommand).map((call) => call.args[0].input);
+    expect(inputs).toHaveLength(2);
+    // The second page resumes exactly where the first stopped, and the first asked from the start.
+    expect(inputs[0].ExclusiveStartKey).toBeUndefined();
+    expect(inputs[1].ExclusiveStartKey).toEqual({ PK: 'a' });
   });
 
   it('yields nothing for an empty table (no Items field)', async () => {

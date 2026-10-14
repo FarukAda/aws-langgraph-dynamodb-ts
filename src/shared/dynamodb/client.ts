@@ -103,8 +103,9 @@ export interface ResolveClientOptions {
  * bounds how long one attempt may run, which `maxAttempts` alone does not. A
  * `requestHandler` in `clientConfig` replaces that default whole rather than
  * merging with it — the documented escape hatch, and equally the documented
- * way to give up the bound. An injected client keeps whatever it was built
- * with — see {@link warnOnStackedRetries}.
+ * way to give up the bound. Either key named with `undefined` overrides
+ * nothing and keeps its default. An injected client keeps whatever it was
+ * built with — see {@link warnOnStackedRetries}.
  */
 export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDynamoDBClient {
   if (options.client) {
@@ -124,14 +125,18 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
   // this client at once — any value short enough to be useful destroys
   // healthy writes that this library then retries, and any value long enough
   // to be safe bounds nothing the request timeout does not already bound.
+  //
+  // Each default yields only to a value the config gives: a key named with
+  // `undefined` — a config assembled from settings that were not all set —
+  // names no override, and spread over a default it would take it away.
   const ddbClient = createClient({
-    maxAttempts: 1,
-    requestHandler: {
+    ...options.clientConfig,
+    maxAttempts: options.clientConfig?.maxAttempts ?? 1,
+    requestHandler: options.clientConfig?.requestHandler ?? {
       requestTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
       socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS,
       throwOnRequestTimeout: true,
     },
-    ...options.clientConfig,
   });
   return { ddbClient, client: DynamoDBDocument.from(ddbClient), ownsClient: true };
 }
@@ -199,18 +204,15 @@ export async function warnOnStackedRetries(
  */
 export type AttributeMap = Record<string, NativeAttributeValue>;
 
-/** A BatchWriteItem PutRequest. */
-interface PutWriteRequest {
-  PutRequest: { Item: AttributeMap };
-}
-
-/** A BatchWriteItem DeleteRequest. */
-interface DeleteWriteRequest {
-  DeleteRequest: { Key: AttributeMap };
-}
-
-/** A single BatchWriteItem write request. */
-export type WriteRequest = PutWriteRequest | DeleteWriteRequest;
+/**
+ * A single `BatchWriteItem` write request, as the document client takes it —
+ * a `PutRequest` carrying the item, or a `DeleteRequest` carrying the key:
+ * the shape of each entry a `BATCH_WRITE_INCOMPLETE` error's
+ * `details.unprocessed` carries, verbatim, so a caller can re-submit it.
+ */
+export type WriteRequest =
+  | { PutRequest: { Item: Record<string, NativeAttributeValue> } }
+  | { DeleteRequest: { Key: Record<string, NativeAttributeValue> } };
 
 /** One action of a `TransactWriteItems` request, as the document client takes it. */
 export type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];

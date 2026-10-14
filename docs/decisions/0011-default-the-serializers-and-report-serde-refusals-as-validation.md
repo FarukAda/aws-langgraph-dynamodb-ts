@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Accepted. The class names below — `ValidationError`, `UpstreamError` — are
+those of the error hierarchy [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md)
+replaced; the decision stands with a serde refusal reported as the one error
+class under `VALIDATION` naming `serde`, and an unbranded failure classified
+rather than passed through.
 
 ## Context
 

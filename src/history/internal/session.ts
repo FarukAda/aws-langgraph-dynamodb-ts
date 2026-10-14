@@ -23,10 +23,13 @@ import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client.
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
+  WRITE_ID_ATTRIBUTE,
 } from '../../shared/dynamodb/idempotent-write.js';
 import {
   backfilledAt,
   DEFAULT_INDEX_SHARDS,
+  INDEX_PARTITION_ATTRIBUTE,
+  INDEX_SORT_ATTRIBUTE,
   indexKeys,
   type IndexTarget,
 } from '../../shared/dynamodb/recency-index.js';
@@ -249,6 +252,15 @@ export interface SessionUpdateFields {
   title?: string;
   ttlTimestamp?: number;
   forceTtlRefresh?: boolean;
+  /**
+   * The expired `ttl` anchor the stored session row carries, when it does:
+   * that row is a dead incarnation every reader already hides, so this update
+   * starts the session over — count, creation time and title are this
+   * append's — pinned to that anchor, so of two appends restarting one
+   * session the second loses the pin and adds to the first on its retry. Set
+   * on an append's first chunk only, by {@link appendChunks}.
+   */
+  restart?: number;
 }
 
 /**
@@ -266,13 +278,21 @@ export interface SessionUpdateFields {
  * caller's already-healed anchor can never be regressed backward — see
  * append.ts for how a lost race is retried without forcing.
  *
+ * When `restart` names the expired anchor the row carries, the update starts
+ * the session over instead: the count is `SET` to this append's, `createdAt`
+ * and `sessionId` are written outright, the title is this append's or removed,
+ * and the whole item is pinned to that expired anchor. The dead incarnation's
+ * title and creation time would otherwise be served for the new conversation
+ * — a `listSessions` row titled after a conversation that expired — and its
+ * count would carry over, for as long as DynamoDB's sweep left the row.
+ *
  * Accepts: `count` — how many messages this append adds, which `ADD` applies to
  * whatever the row holds, so two concurrent appends both count. `title` —
  * written once and never overwritten, so a session keeps the title its first
  * turn produced. `writeId` — the appending write's own id, rewritten on every
  * append so the row always names the write that last added to it.
- * `ttlTimestamp` — absent leaves the row without an expiry. `forceTtlRefresh` —
- * see above.
+ * `ttlTimestamp` — absent leaves the row without an expiry. `forceTtlRefresh`
+ * and `restart` — see above.
  *
  * Returns: the `Update` transact-item. It creates the row when there is none:
  * every once-only field is an `if_not_exists`, so the first append and the
@@ -293,10 +313,10 @@ export function buildSessionUpdate(tableName: string, fields: SessionUpdateField
     '#u': 'updatedAt',
     '#c': 'createdAt',
     '#sid': 'sessionId',
-    '#wid': 'writeId',
+    '#wid': WRITE_ID_ATTRIBUTE,
     '#v': 'v',
-    '#gpk': 'gsi1pk',
-    '#gsk': 'gsi1sk',
+    '#gpk': INDEX_PARTITION_ATTRIBUTE,
+    '#gsk': INDEX_SORT_ATTRIBUTE,
   };
   const values: Record<string, NativeAttributeValue> = {
     ':n': fields.count,
@@ -308,14 +328,15 @@ export function buildSessionUpdate(tableName: string, fields: SessionUpdateField
     ':gpk': index.gsi1pk,
     ':gsk': index.gsi1sk,
   };
+  const restarting = fields.restart !== undefined && fields.ttlTimestamp !== undefined;
   // The row's format version is rewritten on every update, not only on
   // creation: an append by this version leaves a row this version wrote, and a
   // reader must be told that rather than infer it from which attributes happen
   // to be present.
   const sets = [
     '#u = :u',
-    '#c = if_not_exists(#c, :c)',
-    '#sid = if_not_exists(#sid, :sid)',
+    restarting ? '#c = :c' : '#c = if_not_exists(#c, :c)',
+    restarting ? '#sid = :sid' : '#sid = if_not_exists(#sid, :sid)',
     // An unconditional `SET`, deliberately unlike the three `if_not_exists`
     // clauses around it. This is not a once-only field: its whole content is
     // that it moves. Written in their style it would stamp the id when the
@@ -330,16 +351,28 @@ export function buildSessionUpdate(tableName: string, fields: SessionUpdateField
     '#gpk = :gpk',
     '#gsk = :gsk',
   ];
+  let removes = '';
   if (fields.title !== undefined) {
     names['#title'] = 'title';
     values[':title'] = fields.title;
-    sets.push('#title = if_not_exists(#title, :title)');
+    sets.push(restarting ? '#title = :title' : '#title = if_not_exists(#title, :title)');
+  } else if (restarting) {
+    names['#title'] = 'title';
+    removes = ' REMOVE #title';
   }
   let conditionExpression: string | undefined;
   if (fields.ttlTimestamp !== undefined) {
     names['#ttl'] = 'ttl';
     values[':ttl'] = fields.ttlTimestamp;
-    if (fields.forceTtlRefresh) {
+    if (restarting) {
+      sets.push('#ttl = :ttl');
+      // Pinned to the very anchor the read saw: a concurrent append that
+      // restarted the session first has already replaced it, and this one must
+      // then add to that session rather than start it over a second time —
+      // which the retry without `restart` does.
+      values[':expired'] = fields.restart;
+      conditionExpression = '#ttl = :expired';
+    } else if (fields.forceTtlRefresh) {
       sets.push('#ttl = :ttl');
       // Guards the force-overwrite so a concurrent caller's already-healed,
       // equal-or-later anchor can never be regressed backward by this one.
@@ -353,11 +386,14 @@ export function buildSessionUpdate(tableName: string, fields: SessionUpdateField
       sets.push('#ttl = if_not_exists(#ttl, :ttl)');
     }
   }
+  // A restart writes the count rather than adding to it: the count the row
+  // holds is the dead incarnation's.
+  const count = restarting ? 'SET #count = :n, ' : 'ADD #count :n SET ';
   return {
     Update: {
       TableName: tableName,
       Key: sessionRowKey(fields.sessionId),
-      UpdateExpression: `ADD #count :n SET ${sets.join(', ')}`,
+      UpdateExpression: `${count}${sets.join(', ')}${removes}`,
       ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
@@ -427,6 +463,8 @@ export async function removeRolledBackTitle(
 export interface TtlAnchorResult {
   ttlTimestamp: number;
   refresh: boolean;
+  /** The expired anchor the SESSION row carries, when it carries one: a dead incarnation to start over. */
+  expiredAnchor?: number;
 }
 
 /**
@@ -438,20 +476,20 @@ export interface TtlAnchorResult {
  * This is a strongly-consistent read, never a write, so it cannot leave a
  * metadata-only orphan row when the following append transaction fails.
  *
- * When a stale anchor is healed, only the persisted SESSION row's `ttl` is
- * force-refreshed — the message rows already written under the expired
- * anchor keep their own (already-expired) `ttl` and get swept independently
- * by DynamoDB's TTL sweep. Until that sweep runs (and until
- * `reconcileMessageCount` repairs the count), `messageCount` can therefore be
- * temporarily overstated relative to what `getMessages` actually returns.
- * This is expected, not a bug.
+ * An anchor that has passed is handed back as `expiredAnchor`: the stored
+ * session is then a dead incarnation — every reader already hides it and its
+ * messages — and the append starts the session over, pinned to that anchor
+ * (see {@link buildSessionUpdate}). The message rows written under the expired
+ * anchor keep their own, expired `ttl` and are swept independently by
+ * DynamoDB; nothing reads them in the meantime.
  *
  * Accepts: `candidate` — the anchor this append would use if the session has
  * none, already computed from the configured ttl.
  *
- * Returns: the anchor to stamp on this append's messages, and whether the
- * SESSION row's own `ttl` must be force-overwritten rather than left to
- * `if_not_exists`.
+ * Returns: the anchor to stamp on this append's messages, whether the SESSION
+ * row's own `ttl` must be force-overwritten rather than left to
+ * `if_not_exists`, and the expired anchor it replaces when the row carries
+ * one.
  *
  * Throws: whatever the read throws after retries.
  *
@@ -483,10 +521,9 @@ export async function resolveTtlAnchor(
     retryFor(context, signal),
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;
-  if (typeof ttl === 'number' && ttl > nowSeconds()) {
-    return { ttlTimestamp: ttl, refresh: false };
-  }
-  return { ttlTimestamp: candidate, refresh: true };
+  if (typeof ttl !== 'number') return { ttlTimestamp: candidate, refresh: true };
+  if (ttl > nowSeconds()) return { ttlTimestamp: ttl, refresh: false };
+  return { ttlTimestamp: candidate, refresh: true, expiredAnchor: ttl };
 }
 
 const MAX_TITLE_LENGTH = 80;
@@ -553,9 +590,15 @@ export function deriveTitle(messages: StoredMessage[]): string | undefined {
   const firstHuman = messages.find((message) => message.type === 'human');
   const content = firstHuman === undefined ? undefined : textOf(firstHuman.data.content);
   if (content === undefined || content.length === 0) return undefined;
-  const codePoints = [...content];
-  if (codePoints.length <= MAX_TITLE_LENGTH) return content;
-  return `${codePoints.slice(0, MAX_TITLE_LENGTH - 1).join('')}…`;
+  // Read only as far as the title reaches: a message can be megabytes, and
+  // spreading the whole of it into code points to keep eighty would cost
+  // memory and time in proportion to the message on every append.
+  const kept: string[] = [];
+  for (const codePoint of content) {
+    if (kept.length === MAX_TITLE_LENGTH) return `${kept.slice(0, MAX_TITLE_LENGTH - 1).join('')}…`;
+    kept.push(codePoint);
+  }
+  return content;
 }
 
 /** The per-session metadata row, updated atomically as messages are appended. */
@@ -678,7 +721,7 @@ export async function repairMessageCount(
       await writeCount(context, sessionId, { count, observed }, signal);
       return count;
     } catch (error) {
-      if (classifyAwsError(error as Error) !== ErrorCode.CONDITION_CONFLICT) throw error;
+      if (!isConditionRejected(error as Error)) throw error;
     }
   }
   throw conflictError(

@@ -39,7 +39,7 @@ const ADAPTER_PREFIX = `HISTORY${KEY_SEPARATOR}`;
 /** Fixed sort key for the per-session metadata item. */
 export const SESSION_SORT_KEY = `${ADAPTER_PREFIX}SESSION`;
 
-const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG#`;
+const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG${KEY_SEPARATOR}`;
 
 /**
  * Adapter tag prefixed to every chat-history partition key — see the
@@ -251,8 +251,8 @@ export interface MessageRowSource {
  * than losing its oldest turns first. `signal` — cancels the upload an
  * offloaded message costs.
  *
- * Returns: the row, keyed by the session partition and a `MSG#<messageId>` sort
- * key, its payload inline or offloaded to
+ * Returns: the row, keyed by the session partition and a
+ * `HISTORY#MSG#<messageId>` sort key, its payload inline or offloaded to
  * `<keyPrefix><sessionId, base64url>/<messageId>.bin`.
  *
  * Throws: `VALIDATION` naming `value` for a message the serializer cannot

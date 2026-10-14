@@ -7,6 +7,7 @@ import type {
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -204,7 +205,15 @@ const valued: Checkpoint = {
   channel_versions: { foo: 1, baz: 1 },
 };
 
-describe('putCheckpoint stores every channel value the checkpoint carries', () => {
+/**
+ * `newVersions` is the saver's to accept and ignore: `BaseCheckpointSaver.put`
+ * declares it, and the action behind the saver never sees it. These go through
+ * the saver, where the argument exists.
+ */
+describe('put stores every channel value the checkpoint carries', () => {
+  const saver = (client: CheckpointerContext['client']) =>
+    new DynamoDBSaver({ tableName: 'ckpt', client: client, logger: SILENT_LOGGER });
+
   /**
    * The reference saver does not narrow what it stores: `MemorySaver.put` takes
    * three parameters and has no `newVersions` at all
@@ -214,13 +223,7 @@ describe('putCheckpoint stores every channel value the checkpoint carries', () =
   it('stores every value when newVersions names only one channel', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await putCheckpoint(
-      contextWith(client),
-      { configurable: { thread_id: 't1' } },
-      valued,
-      metadata,
-      { foo: 1 },
-    );
+    await saver(client).put({ configurable: { thread_id: 't1' } }, valued, metadata, { foo: 1 });
     expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
   });
 
@@ -234,7 +237,7 @@ describe('putCheckpoint stores every channel value the checkpoint carries', () =
     for (const configurable of [{ thread_id: 't1' }, { thread_id: 't1', checkpoint_id: 'p' }]) {
       const { client, mock } = createStrictDocumentMock();
       mock.on(TransactWriteCommand).resolves({});
-      await putCheckpoint(contextWith(client), { configurable }, valued, metadata, {});
+      await saver(client).put({ configurable }, valued, metadata, {});
       expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
     }
   });
@@ -251,14 +254,13 @@ describe('putCheckpoint stores every channel value the checkpoint carries', () =
     expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
   });
 
-  /** The parent read existed only to carry channels forward; nothing needs it now. */
+  /** A parent read would exist only to carry channels forward; nothing needs one. */
   it('never reads the parent row, whatever newVersions says', async () => {
     const cases: (ChannelVersions | undefined)[] = [undefined, {}, { foo: 1 }];
     for (const versions of cases) {
       const { client, mock } = createStrictDocumentMock();
       mock.on(TransactWriteCommand).resolves({});
-      await putCheckpoint(
-        contextWith(client),
+      await saver(client).put(
         { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
         valued,
         metadata,
@@ -271,13 +273,7 @@ describe('putCheckpoint stores every channel value the checkpoint carries', () =
   it('writes no storedChannels attribute on the META row', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await putCheckpoint(
-      contextWith(client),
-      { configurable: { thread_id: 't1' } },
-      valued,
-      metadata,
-      { foo: 1 },
-    );
+    await saver(client).put({ configurable: { thread_id: 't1' } }, valued, metadata, { foo: 1 });
     const meta =
       mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
     expect(meta).not.toHaveProperty('storedChannels');

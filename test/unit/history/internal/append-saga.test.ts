@@ -10,7 +10,7 @@ import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { MessageRow } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { retryExhaustedError } from '../../../../src/shared/errors/errors';
+import { markMayStillLand, retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -58,6 +58,28 @@ describe('appendChunks', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(2);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
+
+  /**
+   * Only the first chunk starts the session over; the chunks after it add to
+   * the session that chunk restarted. Were every chunk a restart, the second
+   * would reset the count the first had just written.
+   */
+  it('restarts a dead session with its first chunk only, and adds the rest', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await appendChunks(context(client), {
+      sessionId: SESSION_ID,
+      chunks: [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+      fields: { now: 'u', ttlTimestamp: 9999, forceTtlRefresh: true, restart: 1234 },
+    });
+    const updates = mock
+      .commandCalls(TransactWriteCommand)
+      .map((call) => call.args[0].input.TransactItems?.[0]?.Update);
+    expect(updates[0]?.UpdateExpression).toMatch(/^SET /);
+    expect(updates[0]?.ConditionExpression).toBe('#ttl = :expired');
+    expect(updates[1]?.UpdateExpression).toMatch(/^ADD #count :n/);
+    expect(updates[1]?.ConditionExpression).toBe('attribute_not_exists(#ttl) OR #ttl <= :ttl');
   });
 
   it('rolls back committed chunks and reverts the count when a later chunk fails', async () => {
@@ -387,6 +409,38 @@ describe('appendChunks: ambiguous chunk failure', () => {
       }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
+  });
+
+  /**
+   * A refusal that ends the budget is thrown bare, not as `RETRY_EXHAUSTED`,
+   * and still may follow an attempt that got no answer: credentials expiring
+   * mid-budget refuse attempt 2 after attempt 1 was cut. Such a refusal
+   * carries the budget's record, and the chunk is then read back like any
+   * other ambiguous failure rather than written off as applied nothing — the
+   * read finds nothing here, so the chunk stays unsettled and its object is
+   * kept for the row that may yet name it.
+   */
+  it('reads back a refusal that followed an unanswered attempt instead of trusting it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const refused = markMayStillLand(
+      Object.assign(new Error('expired'), {
+        name: 'ExpiredTokenException',
+        $metadata: { httpStatusCode: 400 },
+      }),
+    );
+    mock.on(TransactWriteCommand).rejects(refused);
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    await expect(
+      appendChunks(context(client, offloader, logger), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
   it("leaks the uncertain chunk's objects and reports COMPENSATION_FAILED when the re-read itself fails", async () => {

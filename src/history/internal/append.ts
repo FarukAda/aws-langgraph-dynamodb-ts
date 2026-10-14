@@ -32,11 +32,20 @@ import {
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write.js';
 import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema.js';
-import { DynamoDBLangGraphError, failureLabel, toError } from '../../shared/errors/base-error.js';
+import {
+  DynamoDBLangGraphError,
+  failureLabel,
+  hasErrorCode,
+  toError,
+} from '../../shared/errors/base-error.js';
 import { refusedByService } from '../../shared/errors/classify.js';
 import { ErrorCode } from '../../shared/errors/error-code.js';
-import { compensationFailedError, unsettledAppendError } from '../../shared/errors/errors.js';
-import { absorbLoggerFailure } from '../../shared/logging/logger.js';
+import {
+  compensationFailedError,
+  retryBudgetMayStillLand,
+  unsettledAppendError,
+} from '../../shared/errors/errors.js';
+import { absorbLoggerFailure, type Logger } from '../../shared/logging/logger.js';
 import { truncateForLog } from '../../shared/logging/truncate.js';
 import type { SessionId, StorableMessages } from './parse.js';
 import { buildMessageRow, type MessageRow } from './rows.js';
@@ -65,6 +74,8 @@ interface AppendFields {
   title?: string;
   ttlTimestamp?: number;
   forceTtlRefresh?: boolean;
+  /** The expired anchor the session row carries, which the first chunk starts the session over from. */
+  restart?: number;
 }
 
 /** An append cut into chunks, with the fields every chunk's SESSION update stamps. */
@@ -102,15 +113,37 @@ const MAX_MESSAGES_PER_TRANSACTION = 99;
 const MAX_TRANSACTION_BYTES = 3_500_000;
 
 /**
+ * The S3 key an upload that failed was writing to, when the failure says so,
+ * so the cleanup can take the object it may have left along with the ones the
+ * earlier messages did leave. A refusal before any upload, and a cancel, name
+ * no key: a cancelled upload's object is the documented orphan the lifecycle
+ * rule sweeps.
+ */
+function keyOfFailedUpload(error: Error): string[] {
+  if (!hasErrorCode(error, ErrorCode.S3_OFFLOAD_FAILED)) return [];
+  const { operation, key } = error.context;
+  return operation === 'upload' && typeof key === 'string' ? [key] : [];
+}
+
+/**
  * Encode every message, cleaning up after itself if one fails partway.
  *
  * Offloaded messages upload sequentially here, *before* the append saga's
  * compensation machinery is ever reached, so without the cleanup here a failure
  * on message N would strand messages 1..N-1's already-uploaded S3 objects with
  * nothing to delete them — the one gap in this subsystem's otherwise complete
- * no-orphan guarantee.
- * Nothing will ever reference those objects, so they are safe to delete
- * unconditionally on the way out.
+ * no-orphan guarantee. Nothing will ever reference those objects, nor the one
+ * message N's own upload may have left behind an ambiguous failure, so they
+ * are safe to delete unconditionally on the way out.
+ *
+ * Every message id is drawn before the first message is encoded. Encoding
+ * yields — the serializer is async, and an offloaded message uploads — so ids
+ * drawn one at a time inside the loop let another append on this instance
+ * draw its own in between, and the two appends then interleave in sort order:
+ * an `AIMessage` with tool calls parted from its `ToolMessage` by another
+ * caller's message, which every model provider rejects on the next request.
+ * Drawn in one synchronous run, an append's ids are contiguous, and a later
+ * append's all sort after them.
  */
 async function buildMessageRows(
   context: HistoryContext,
@@ -118,13 +151,14 @@ async function buildMessageRows(
 ): Promise<MessageRow[]> {
   const { sessionId, signal } = request;
   const ttlTimestamp = request.anchor?.ttlTimestamp;
+  const messageIds = request.messages.map(() => context.ulid());
   const items: MessageRow[] = [];
   try {
-    for (const message of request.messages) {
+    for (const [index, message] of request.messages.entries()) {
       items.push(
         await buildMessageRow(
           context,
-          { sessionId, messageId: context.ulid(), message, ttlTimestamp },
+          { sessionId, messageId: messageIds[index], message, ttlTimestamp },
           signal,
         ),
       );
@@ -132,7 +166,10 @@ async function buildMessageRows(
   } catch (error) {
     if (context.offloader) {
       await cleanUpS3Orphans(context.offloader, {
-        keys: collectS3Keys(items.map((item) => item.message)),
+        keys: [
+          ...collectS3Keys(items.map((item) => item.message)),
+          ...keyOfFailedUpload(error as Error),
+        ],
         operation: 'history.addMessages.encode',
         logger: context.logger,
       });
@@ -171,6 +208,7 @@ export async function appendMessages(
       title: deriveTitle(request.messages),
       ttlTimestamp: request.anchor?.ttlTimestamp,
       forceTtlRefresh: request.anchor?.refresh,
+      restart: request.anchor?.expiredAnchor,
     },
     signal: request.signal,
   });
@@ -191,30 +229,20 @@ export async function appendMessages(
  * go; the other two replacing the one error whose job is to say what went
  * wrong with the logger's own.
  *
- * The guard itself is {@link absorbLoggerFailure}, which this held an inline
- * copy of while that helper belonged to another change. Swallowing is still
- * the answer for the reason it gives: the only channel a report could use is
- * the one that just broke. Guarded here rather than left to the seam the
- * context's logger was resolved at, because this is the package's least
- * forgiving path — it runs once per rolled-back append, and what it loses if
- * it stops early is a caller's "all messages or none".
+ * The guard is {@link absorbLoggerFailure}, for the reason it gives: the only
+ * channel a report could use is the one that just broke. Guarded here rather
+ * than left to the seam the context's logger was resolved at, because this is
+ * the package's least forgiving path — it runs once per rolled-back append,
+ * and what it loses if it stops early is a caller's "all messages or none".
+ *
+ * Each call site writes its own `logger.<level>('…', { … })` line and hands
+ * it here to be guarded, rather than handing a level and a message to one
+ * call: the README's log table is checked against `logger.<level>` calls
+ * whose message is a literal, and a line assembled from variables is one that
+ * check cannot see.
  */
-function reportStep(
-  context: HistoryContext,
-  level: 'warn' | 'error',
-  message: string,
-  fields: { sessionId: SessionId; committedChunks: number; unsettledBecause?: Error },
-): void {
-  const { sessionId, committedChunks, unsettledBecause } = fields;
-  absorbLoggerFailure(() =>
-    context.logger[level](message, {
-      sessionId,
-      committedChunks,
-      ...(unsettledBecause === undefined
-        ? {}
-        : { reason: truncateForLog(failureLabel(unsettledBecause)) }),
-    }),
-  );
+function reportStep(context: HistoryContext, report: (logger: Logger) => void): void {
+  absorbLoggerFailure(() => report(context.logger));
 }
 
 /**
@@ -331,11 +359,11 @@ export async function compensate(
   const { sessionId, chunks } = append;
   const { committed, trigger, uncertain, unsettledBecause } = failure;
   if (committed.length > 0) {
-    reportStep(
-      context,
-      'warn',
-      'history.addMessages compensating committed chunks after a chunk failed',
-      { sessionId, committedChunks: committed.length },
+    reportStep(context, (logger) =>
+      logger.warn('history.addMessages compensating committed chunks after a chunk failed', {
+        sessionId,
+        committedChunks: committed.length,
+      }),
     );
   }
   // The never-attempted suffix never had a DynamoDB row, so it is safe to
@@ -345,11 +373,11 @@ export async function compensate(
   try {
     await rollbackCommitted(context, append, committed);
   } catch (rollbackError) {
-    reportStep(
-      context,
-      'error',
-      'history.addMessages rollback failed; messageCount may have drifted',
-      { sessionId, committedChunks: committed.length },
+    reportStep(context, (logger) =>
+      logger.error('history.addMessages rollback failed; messageCount may have drifted', {
+        sessionId,
+        committedChunks: committed.length,
+      }),
     );
     // Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects.
     throw compensationFailedError(trigger, toError(rollbackError as Error));
@@ -357,11 +385,15 @@ export async function compensate(
   // Only now that committed rows are confirmed deleted is it safe to delete their S3 objects.
   await cleanBatchS3(context, chunks.slice(0, committed.length));
   if (!uncertain) throw trigger;
-  reportStep(
-    context,
-    'error',
-    'history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted',
-    { sessionId, committedChunks: committed.length, unsettledBecause: unsettledBecause ?? trigger },
+  reportStep(context, (logger) =>
+    logger.error(
+      'history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted',
+      {
+        sessionId,
+        committedChunks: committed.length,
+        reason: truncateForLog(failureLabel(unsettledBecause ?? trigger)),
+      },
+    ),
   );
   // A cancel is reported as the cancel it is. Any other failure whose chunk may
   // be live cannot claim the session is back to where it was.
@@ -393,11 +425,13 @@ function chunkProbe(chunk: MessageRow[]): RowProbe {
 /**
  * Establish what a failed chunk did.
  *
- * A refusal the service answered applied nothing and costs no read. Every
- * other failure is read back, a cancel included, since the chunk it cut short
- * may have committed; and a row the read finds absent still does not settle a
- * chunk whose failure may still be applied — some attempt of it got no
- * answer, or DynamoDB answered that attempt as still in progress
+ * A refusal the service answered applied nothing and costs no read — unless
+ * it ended a budget an earlier, unanswered attempt of which may still be
+ * applied, which the refusal then carries a record of (`markMayStillLand`).
+ * Every other failure is read back, a cancel included, since the chunk it cut
+ * short may have committed; and a row the read finds absent still does not
+ * settle a chunk whose failure may still be applied — some attempt of it got
+ * no answer, or DynamoDB answered that attempt as still in progress
  * (`TransactionInProgressException`) or with a server error (5xx) — since
  * DynamoDB may apply it after the read (record 25).
  */
@@ -406,7 +440,9 @@ async function settleFailedChunk(
   chunk: MessageRow[],
   failure: Error,
 ): Promise<ChunkSettlement> {
-  if (!isAbortError(failure) && refusedByService(failure)) return { verdict: 'not-landed' };
+  const answeredRefusal =
+    !isAbortError(failure) && !retryBudgetMayStillLand(failure) && refusedByService(failure);
+  if (answeredRefusal) return { verdict: 'not-landed' };
   const probe = chunkProbe(chunk);
   let row: AttributeMap | undefined;
   try {
@@ -418,17 +454,24 @@ async function settleFailedChunk(
   return verdict === 'unverified' ? { verdict, unsettledBecause: failure } : { verdict };
 }
 
-/** Run one chunk's transaction, returning its error instead of throwing. */
+/**
+ * Run one chunk's transaction, returning its error instead of throwing. Only
+ * the first chunk of an append starts a dead session over; the chunks after it
+ * add to the session that chunk restarted, where a second restart would reset
+ * the count the first had just written.
+ */
 async function commitChunk(
   context: HistoryContext,
   append: ChunkedAppend,
   chunk: MessageRow[],
+  position: number,
 ): Promise<Error | undefined> {
+  const fields = { ...append.fields, sessionId: append.sessionId, count: chunk.length };
   try {
     await writeMessageChunk(
       context,
       chunk,
-      { ...append.fields, sessionId: append.sessionId, count: chunk.length },
+      position === 0 ? fields : { ...fields, restart: undefined },
       { signal: append.signal },
     );
     return undefined;
@@ -486,7 +529,7 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
  */
 export async function appendChunks(context: HistoryContext, append: ChunkedAppend): Promise<void> {
   const committed: CommittedChunk[] = [];
-  for (const chunk of append.chunks) {
+  for (const [position, chunk] of append.chunks.entries()) {
     if (append.signal?.aborted) {
       // Nothing of this chunk or any after it has been sent, so all of them are safe to release.
       await compensate(context, append, {
@@ -495,7 +538,7 @@ export async function appendChunks(context: HistoryContext, append: ChunkedAppen
         uncertain: false,
       });
     }
-    const failure = await commitChunk(context, append, chunk);
+    const failure = await commitChunk(context, append, chunk, position);
     if (!failure) {
       committed.push(asCommitted(chunk));
       continue;
@@ -582,11 +625,13 @@ async function attempt(
  * single `ClientRequestToken` is used per attempt so a re-sent commit (e.g.
  * after a lost response) is idempotent and never double-applies the count
  * `ADD`. When `fields.forceTtlRefresh` is set, the session update carries a
- * monotonic ConditionExpression (see session.ts); if — and only if —
- * that specific condition loses a race against a concurrent caller who just
- * healed the same anchor, this retries the identical chunk once with
- * `forceTtlRefresh: false` (safe: `if_not_exists` then converges to whatever
- * already won) rather than losing the message writes to a benign ttl race. A
+ * monotonic ConditionExpression (see session.ts), and when `fields.restart`
+ * names an expired anchor it is pinned to that anchor; if — and only if —
+ * that condition loses a race against a concurrent caller who just healed or
+ * restarted the same session, this retries the identical chunk once with
+ * `forceTtlRefresh: false` and no `restart` (safe: `if_not_exists` and `ADD`
+ * then converge on whatever already won) rather than losing the message
+ * writes to a benign ttl race. A
  * cancellation caused by any other item (a genuine message-row conflict) is
  * not retried here — it propagates for the normal transient-conflict retry
  * budget inside `withDynamoDBRetry` to handle, or to the caller otherwise.
@@ -626,8 +671,14 @@ export async function writeMessageChunk(
   try {
     await attempt(context, items, withIndex, retry);
   } catch (error) {
-    if (fields.forceTtlRefresh && isTtlConditionLoss(error as Error)) {
-      await attempt(context, items, { ...withIndex, forceTtlRefresh: false }, retry);
+    const pinned = fields.forceTtlRefresh || fields.restart !== undefined;
+    if (pinned && isTtlConditionLoss(error as Error)) {
+      await attempt(
+        context,
+        items,
+        { ...withIndex, forceTtlRefresh: false, restart: undefined },
+        retry,
+      );
       return;
     }
     throw error;

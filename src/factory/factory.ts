@@ -98,6 +98,22 @@ function overridesClient(options: FactoryBaseOptions): boolean {
 }
 
 /**
+ * `options` without the keys whose value is `undefined`. A key given that way
+ * is "not configured", as it is everywhere in this package, and the factory
+ * lays the per-adapter options over its defaults with a spread, where such a
+ * key would instead take the default away: a `client: undefined` would replace
+ * the shared client with one the adapter builds from nothing, a
+ * `ttl: undefined` would drop the factory's expiry without a word.
+ */
+function given<O extends object>(options: O): O {
+  const kept: Record<string, object | undefined> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (value !== undefined) kept[key] = value as object;
+  }
+  return kept as O;
+}
+
+/**
  * Convenience constructors for the adapters.
  *
  * Individual `create*` methods each build one adapter, on the factory's `client`
@@ -146,8 +162,8 @@ export class DynamoDBFactory {
   }
 
   /**
-   * The base `s3` config with the region the DynamoDB side was configured with
-   * already filled in.
+   * An `s3` config with the region the DynamoDB side was configured with
+   * filled in, when it names none of its own.
    *
    * An adapter normally reads that region off its own `clientConfig`
    * (`offloaderConfigFor`), but the adapters {@link createAll} builds are given
@@ -157,16 +173,17 @@ export class DynamoDBFactory {
    * without it, a bucket reachable only through that region fails with an
    * opaque `PermanentRedirect` on the first offload, unlike the identical
    * configuration through `createStore`, which resolves its own region
-   * directly.
+   * directly. It is asked of the `s3` an adapter ends up with — the base one,
+   * or a section's own, which replaces the base one whole — so neither is left
+   * without the region the other would have had.
    *
-   * A base `s3`, or its `clientConfig`, that is not an object is handed on
+   * An `s3`, or its `clientConfig`, that is not an object is handed on
    * unchanged, for each adapter to refuse by its own name: reading `.region`
    * off a `null` one would throw here instead, and writing a region into a
    * malformed `clientConfig` would turn it into an object shape an adapter
    * then accepts instead of refusing.
    */
-  private sharedS3(): S3OffloadConfig | undefined {
-    const s3 = this.base.s3;
+  private withTableRegion(s3: S3OffloadConfig | undefined): S3OffloadConfig | undefined {
     if (!isObjectShape(s3)) return s3;
     if (s3.clientConfig !== undefined && !isObjectShape(s3.clientConfig)) return s3;
     const region = s3ClientOptions(s3.clientConfig).region ?? this.base.clientConfig?.region;
@@ -189,8 +206,9 @@ export class DynamoDBFactory {
    * A saver, on the factory's `client` when it has one and otherwise on its own.
    *
    * Accepts: `options` — the saver's own, laid over the factory's defaults. A
-   * per-adapter value wins; see {@link defaultsFor} for how a client choice
-   * replaces the factory's as a unit.
+   * per-adapter value wins, and a key given as `undefined` is not a value;
+   * a client choice (`client`, `clientConfig` or neither) replaces the
+   * factory's as a unit.
    *
    * Returns: the saver. It owns, and releases on `destroy()`, only a client it
    * built itself; a `client` from the factory is never closed by it.
@@ -203,7 +221,8 @@ export class DynamoDBFactory {
    */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
     assertObjectShape(options, 'options');
-    return new DynamoDBSaver({ ...this.defaultsFor(options), ...options });
+    const own = given(options);
+    return new DynamoDBSaver({ ...this.defaultsFor(own), ...own });
   }
 
   /**
@@ -217,7 +236,8 @@ export class DynamoDBFactory {
    */
   createStore(options: DynamoDBStoreOptions): DynamoDBStore {
     assertObjectShape(options, 'options');
-    return new DynamoDBStore({ ...this.defaultsFor(options), ...options });
+    const own = given(options);
+    return new DynamoDBStore({ ...this.defaultsFor(own), ...own });
   }
 
   /**
@@ -232,7 +252,8 @@ export class DynamoDBFactory {
    */
   createChatMessageHistory(options: DynamoDBChatMessageHistoryOptions): DynamoDBChatMessageHistory {
     assertObjectShape(options, 'options');
-    return new DynamoDBChatMessageHistory({ ...this.defaultsFor(options), ...options });
+    const own = given(options);
+    return new DynamoDBChatMessageHistory({ ...this.defaultsFor(own), ...own });
   }
 
   /**
@@ -268,7 +289,13 @@ export class DynamoDBFactory {
     }
     const logger = resolveLogger(this.base.logger);
     const resolved = resolveDynamoDBClient(this.base);
-    const shared = { ...this.sharedDefaults(), s3: this.sharedS3(), client: resolved.client };
+    const shared = { ...this.sharedDefaults(), client: resolved.client };
+    // A section's own `s3` replaces the base one whole, so the region goes to
+    // whichever of the two the adapter ends up with, once the two are merged.
+    const onSharedClient = <Section extends { s3?: S3OffloadConfig }>(section: Section) => {
+      const options = { ...shared, ...given(section) };
+      return { ...options, s3: this.withTableRegion(options.s3) };
+    };
     const built: Destroyable[] = [];
     // Record an adapter the moment it exists, so a later failure can still tear it down.
     const track = <T extends Destroyable>(adapter: T): T => {
@@ -284,9 +311,9 @@ export class DynamoDBFactory {
     };
     try {
       const adapters: BuiltAdapters = {
-        saver: saver && track(new DynamoDBSaver({ ...shared, ...saver })),
-        store: store && track(new DynamoDBStore({ ...shared, ...store })),
-        history: history && track(new DynamoDBChatMessageHistory({ ...shared, ...history })),
+        saver: saver && track(new DynamoDBSaver(onSharedClient(saver))),
+        store: store && track(new DynamoDBStore(onSharedClient(store))),
+        history: history && track(new DynamoDBChatMessageHistory(onSharedClient(history))),
         destroy,
       };
       return adapters as CreatedAdapters<O>;

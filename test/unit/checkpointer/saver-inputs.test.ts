@@ -279,6 +279,28 @@ describe('putWrites writes validation', () => {
     await saver.putWrites(config, [['ch', 'v']], 'task-1');
     expect(mock.commandCalls(PutCommand)).toHaveLength(1);
   });
+
+  /** LangGraph 1.5 passes the task's path as a fourth argument; earlier LangGraphs pass none. */
+  it('stores the task path it is given beside the write, and no attribute without one', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(PutCommand).resolves({});
+    await saver.putWrites(config, [['ch', 'v']], 'task-1', '~pull, node');
+    await saver.putWrites(config, [['ch', 'w']], 'task-2');
+    const items = mock.commandCalls(PutCommand).map((call) => call.args[0].input.Item);
+    expect(items[0]?.taskPath).toBe('~pull, node');
+    expect(items[1]).not.toHaveProperty('taskPath');
+  });
+
+  it('refuses a task path that is not a string, naming taskPath, before any write', async () => {
+    const { saver, mock } = newSaver();
+    await expect(
+      saver.putWrites(config, [['ch', 'v']], 'task-1', 7 as never),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'taskPath' },
+    });
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+  });
 });
 
 /**

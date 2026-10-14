@@ -35,7 +35,7 @@ import {
 } from '../../shared/validation/primitives.js';
 import type { ListNamespacesOptions } from '../types.js';
 import type { JsonValue } from './filter.js';
-import { sortKey } from './rows.js';
+import { sortKey, sortKeyPrefix } from './rows.js';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -105,13 +105,24 @@ function parseLabels(value: unknown, field: string): string[] {
  *
  * Returns: a copy of the labels, as a {@link NamespacePrefix}. A prefix no
  * stored namespace could ever match is refused rather than answered with a
- * silent empty page.
+ * silent empty page: a malformed label, or labels past the first that compose
+ * more sort key than DynamoDB allows a row to carry before any key — every
+ * label legal on its own, and still no item under it.
  *
- * Throws: `VALIDATION` naming `field` for a non-array, or `<field> element` for
- * a malformed label.
+ * Throws: `VALIDATION` naming `field` for a non-array or a path too wide for
+ * any sort key, or `<field> element` for a malformed label.
  */
 export function parseNamespacePrefix(value: unknown, field: string): NamespacePrefix {
-  return parseLabels(value, field) as NamespacePrefix;
+  const labels = parseLabels(value, field);
+  const bytes = Buffer.byteLength(sortKeyPrefix(labels), 'utf8');
+  if (bytes >= MAX_SORT_KEY_BYTES) {
+    throw validationError(
+      `${field} leads a sort key with ${bytes} bytes before any key; DynamoDB caps sort keys at ` +
+        `${MAX_SORT_KEY_BYTES} bytes, so no stored namespace can match it`,
+      field,
+    );
+  }
+  return labels as NamespacePrefix;
 }
 
 /**
@@ -351,22 +362,36 @@ export function parseListNamespacesOptions(options: ListNamespacesOptions): Pars
 }
 
 /**
- * Refuse what upstream `BaseStore.put` refuses and this store's own key rules
- * allow: no `.` in a label, and no `"langgraph"` root
- * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.js:16-24`). These
- * two rules belong to that one method only: the reference `InMemoryStore.batch`
- * checks neither, and LangGraph's runtime reaches a store only through
- * `batch()`, so a namespace such as `['memories', 'jane.doe@example.com']`
- * written there must stay readable, searchable and deletable here. Only
- * `put()` applies it, as upstream does; `batch()` does not.
+ * Refuse a `.` in a label, which upstream refuses and this store's own key
+ * rules allow: `BaseStore.put` since `@langchain/langgraph-checkpoint@1.1.5`
+ * (`dist/store/base.js:16-24`), and since 1.2.0 every operation, a read
+ * included, of `InMemoryStore.batch` (`dist/store/memory.js`,
+ * `validateMemoryNamespace`) and of `AsyncBatchedStore`, the wrapper a graph
+ * reaches a store through (`dist/store/batch.js`). Applied
+ * to every write here — `put()` and a `batch()` put, which is how LangGraph's
+ * runtime reaches a store — so nothing new lands under such a label whichever
+ * route a caller takes, and to no read or delete, so a row a `batch()` put
+ * wrote before this rule reached it stays readable, searchable and removable.
  */
-function assertUpstreamPutNamespace(namespace: Namespace): void {
+function assertNoPeriodLabel(namespace: Namespace): void {
   if (namespace.some((label) => label.includes('.'))) {
     throw validationError(
-      'namespace element must not contain "."; put() refuses it, as upstream BaseStore.put does',
+      'namespace element must not contain "."; upstream refuses it on every write',
       'namespace element',
     );
   }
+}
+
+/**
+ * Refuse what upstream `BaseStore.put` refuses and this store's own key rules
+ * allow: a `.` in a label ({@link assertNoPeriodLabel}) and the `"langgraph"`
+ * root (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.js:16-24`).
+ * The root rule belongs to that one method: `InMemoryStore.batch` allows the
+ * root (`allowReservedRoot`), so a `batch()` put, a read and a delete allow
+ * it here too.
+ */
+function assertUpstreamPutNamespace(namespace: Namespace): void {
+  assertNoPeriodLabel(namespace);
   if (namespace[0] === RESERVED_ROOT) {
     throw validationError(
       `namespace must not start with "${RESERVED_ROOT}", the root label LangGraph reserves`,
@@ -414,6 +439,8 @@ export function parsePutArguments(
  */
 function parsePutOperation(op: PutOperation): ParsedPut | ParsedDelete {
   const address = parseStoreAddress(op.namespace, op.key);
+  // A write refuses the period; a delete, encoded as a `null` value, does not.
+  if (op.value !== null) assertNoPeriodLabel(address.namespace);
   if (op.value !== null) assertObjectShape(op.value, 'value');
   const index = parseIndex(op.index);
   if (op.value === null) return { kind: 'delete', address };

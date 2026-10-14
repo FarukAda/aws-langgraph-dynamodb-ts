@@ -124,6 +124,20 @@ describe('countLiveMessages', () => {
     expect(input.ExpressionAttributeValues?.[':pk']).toBe('HIST#s1');
   });
 
+  /**
+   * The count is what `reconcileMessageCount` writes back under a pin on the
+   * stored counter. The pin catches a counter that moved between the observe
+   * and the write; it cannot catch a count read off a stale replica, so an
+   * eventually consistent count could persist a wrong number with the pin
+   * satisfied — right after the append or rollback that prompted the repair.
+   */
+  it('reads with strong consistency, like every other read that decides a write', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    serve(mock, [[]]);
+    await countLiveMessages(context(client), SESSION_ID);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+
   it('sums every page, since a partial count is a wrong number', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [[message('01A'), message('01B')], [message('01C')]]);

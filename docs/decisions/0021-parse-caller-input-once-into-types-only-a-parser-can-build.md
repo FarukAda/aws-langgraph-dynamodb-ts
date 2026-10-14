@@ -45,8 +45,11 @@ returns an array or a window returns a copy it built, so the caller's own object
 can no longer change after the check. The order of checks inside each parser is
 the order the replaced checks ran in, so the field a refusal names does not move.
 
-We allow `unknown` in exactly one place: as the declared type of a parameter of a
-`parse*` function in a parser module. ESLint enforces it with one selector and
+We allow `unknown` in two places: as the declared type of a parameter of a
+`parse*` function in a parser module, and as the declared type of a parameter of
+a function whose return type is a type predicate — a guard exists to find out
+what its argument is, so that argument is honestly not yet known to be anything.
+ESLint enforces it with two selectors in `eslint.config.ts` and
 `test/static/no-any-unknown.test.ts` with the TypeScript AST; the test also checks
 that the two lists of parser modules agree.
 

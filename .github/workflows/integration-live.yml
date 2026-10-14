@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -79,9 +79,14 @@ jobs:
       # alone. test/aws/helpers/env.ts makes a run with no region fatal; the
       # count below makes a run that executed nothing fatal too, so a dropped
       # line here can never turn this job green without a single AWS call.
+      # AWS_TEST_REQUIRE_BEDROCK is a repository variable: unset, a Bedrock
+      # model this account has not enabled skips its one check with a warning
+      # annotation; set to 1, it fails the run. See
+      # test/aws/real-aws-bedrock-search.test.ts.
       - name: Run the live-AWS tier
         env:
           AWS_REGION: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION }}
+          AWS_TEST_REQUIRE_BEDROCK: ${{ vars.AWS_TEST_REQUIRE_BEDROCK }}
         run: |
           set -euo pipefail
           npm run test:aws -- --json --outputFile=jest-aws.json

@@ -2,7 +2,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import {
   readSpecialRow,
-  specialRowProbe,
+  writeRowProbe,
   verifyAfterFailure,
 } from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
@@ -64,9 +64,9 @@ function conditionFailure(group?: string): Error {
   return error;
 }
 
-describe('specialRowProbe', () => {
+describe('writeRowProbe', () => {
   it('recognises the write by its own group and asks for the descriptor too', () => {
-    expect(specialRowProbe(item())).toEqual({
+    expect(writeRowProbe(item())).toEqual({
       key: { PK: 'CHKPT#t', SK: 'WRITE##c1#task-1#-0000000001#__interrupt__' },
       kind: 'attribute',
       attribute: 'writeGroup',

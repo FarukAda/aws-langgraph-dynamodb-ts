@@ -1,5 +1,14 @@
 import { buildS3Key } from '../../../../../src/shared/codec/s3/config';
-import { backlinkMetadata, metadataBytes } from '../../../../../src/shared/codec/s3/offloader';
+import { backlinkMetadata } from '../../../../../src/shared/codec/s3/offloader';
+
+/** The UTF-8 bytes `metadata` costs against S3's user-metadata cap: names and values both count, as S3 measures it. */
+function metadataBytes(metadata: Record<string, string>): number {
+  return Object.entries(metadata).reduce(
+    (total, [name, value]) =>
+      total + Buffer.byteLength(name, 'utf8') + Buffer.byteLength(value, 'utf8'),
+    0,
+  );
+}
 
 const decode = (value: string): string => Buffer.from(value, 'base64url').toString('utf8');
 

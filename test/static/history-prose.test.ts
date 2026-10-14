@@ -14,8 +14,11 @@ describe('historyProse', () => {
       'const a = 1;',
       '// previously a string',
       '// Formerly unbounded',
+      '// scans the table, as earlier releases did',
+      '// the fallback is the pre-0.9.0 behaviour',
+      '// historically a scan; in the past a query',
     ].join('\n');
-    expect(historyProse(source)).toEqual([2, 3, 6, 7]);
+    expect(historyProse(source)).toEqual([2, 3, 6, 7, 8, 9, 10]);
   });
 
   it('leaves code and strings alone', () => {

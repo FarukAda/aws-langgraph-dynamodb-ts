@@ -17,7 +17,11 @@ import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concu
 import { isRowAbsent, readRow } from '../../shared/dynamodb/idempotent-write.js';
 import { paginateQuery } from '../../shared/dynamodb/paginate.js';
 import { retryFor } from '../../shared/dynamodb/retry.js';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema.js';
+import {
+  isExpiredRow,
+  PARTITION_KEY_ATTRIBUTE,
+  withoutExpired,
+} from '../../shared/dynamodb/table-schema.js';
 import { failureLabel } from '../../shared/errors/base-error.js';
 import { validationError } from '../../shared/errors/errors.js';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate.js';
@@ -30,7 +34,7 @@ import type {
 } from '../vector-backend.js';
 import type { JsonValue } from './filter.js';
 import { passesFilter } from './filter.js';
-import { getItem } from './get-item.js';
+import { getItem, readCandidate } from './get-item.js';
 import {
   type Namespace,
   type ParsedPut,
@@ -42,7 +46,6 @@ import {
   itemRowKey,
   namespaceMatchesPrefix,
   parseWholeStoreRow,
-  readStoreItem,
   REVISION_ATTRIBUTE,
   scopedQuery,
   type StoreItemRow,
@@ -197,7 +200,11 @@ function refIdentity(namespace: string[], key: string): string {
   return JSON.stringify([...namespace, key]);
 }
 
-/** Decode the buffered rows with the same bounded concurrency the search path uses. */
+/**
+ * Decode the buffered rows with the same bounded concurrency the search path
+ * uses. A row overwritten since the page that listed it is reconciled as it
+ * now is, revision included; one deleted since is left out.
+ */
 async function drainPending(
   context: StoreContext,
   pending: StoreItemRow[],
@@ -206,19 +213,20 @@ async function drainPending(
 ): Promise<void> {
   if (pending.length === 0) return;
   const batch = pending.splice(0, pending.length);
-  const items = await mapWithConcurrency(
+  const reads = await mapWithConcurrency(
     batch,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (record) => readStoreItem(context, record, signal),
+    (record) => readCandidate(context, record, signal),
   );
-  batch.forEach((record, index) => {
+  for (const read of reads) {
+    if (read === undefined) continue;
     live.push({
-      namespace: record.namespace,
-      key: record.key,
-      rev: record.rev,
-      value: items[index].value as Record<string, JsonValue>,
+      namespace: read.row.namespace,
+      key: read.row.key,
+      rev: read.row.rev,
+      value: read.item.value as Record<string, JsonValue>,
     });
-  });
+  }
 }
 
 /**
@@ -333,13 +341,20 @@ export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[])
 }
 
 /**
- * True when a candidate's canonical item is confirmed absent right now. The
- * live-set snapshot and this read are not one point in time, so an item
- * written between them looks orphaned even though it is live — and deleting
- * its vector would silently drop a just-written item out of semantic search.
+ * True when a candidate's canonical item is confirmed absent right now: no
+ * row, or a row past its `ttl`, which no reader answers while DynamoDB's sweep
+ * lags — the snapshot left that item out for the same reason. The live-set
+ * snapshot and this read are not one point in time, so an item written
+ * between them looks orphaned even though it is live — and deleting its
+ * vector would silently drop a just-written item out of semantic search.
  */
 async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boolean> {
-  return isRowAbsent(context, itemRowKey(ref));
+  const row = await readRow(context, {
+    key: itemRowKey(ref),
+    attribute: PARTITION_KEY_ATTRIBUTE,
+    also: ['ttl'],
+  });
+  return row === undefined || isExpiredRow(row, nowSeconds());
 }
 
 /**
@@ -371,9 +386,9 @@ async function unchangedSinceSnapshot(
  * Guarantees: a vector is deleted only on evidence that its item is gone — a
  * fresh strongly-consistent read finds the item still at the revision the
  * snapshot read — when that snapshot yielded it no embedding — or finds no
- * row at all. An item written between the snapshot and the listing looks
- * orphaned and is kept, so reconciling never drops a just-written item out of
- * semantic search.
+ * row at all, or one past its `ttl` that DynamoDB has yet to sweep. An item
+ * written between the snapshot and the listing looks orphaned and is kept, so
+ * reconciling never drops a just-written item out of semantic search.
  */
 export async function pruneOrphans(
   context: StoreContext,
@@ -566,8 +581,14 @@ async function fetchUnseen(
  * stored, so a filter is never answered from a stale vector.
  *
  * Returns: the page's items in the backend's order, each carrying the relevance
- * score for its vector. Fewer than `limit` items means the backend has no more
- * matches under the prefix, not that the page was cut short.
+ * score for its vector — once each: a backend holding several vectors for one
+ * item (one per passage, say) can return it more than once in a round, and
+ * the item is answered at the first score it gave, as the reference store and
+ * {@link rankInMemory} answer an item by its best-matching vector. Fewer than
+ * `limit` items means the backend has no more matches under the prefix, not
+ * that the page was cut short. An item the backend holds no vector for — put
+ * with `index: false`, or with no indexable text — is not a match here, where
+ * the in-DynamoDB ranker lists it last with no score.
  *
  * Throws: `VALIDATION` naming `index.dims` when the query embeds to a
  * different width than the index declares, and naming `maxSearchCandidates`
@@ -621,9 +642,13 @@ export async function searchViaBackend(
     );
     await fetchUnseen(context, scoped, fetched, signal);
     results = [];
+    const answered = new Set<string>();
     for (const match of scoped) {
-      const item = fetched.get(matchIdentity(match));
-      if (item && passesFilter(item, search.filter)) results.push({ ...item, score: match.score });
+      const identity = matchIdentity(match);
+      const item = fetched.get(identity);
+      if (!item || answered.has(identity) || !passesFilter(item, search.filter)) continue;
+      answered.add(identity);
+      results.push({ ...item, score: match.score });
     }
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {

@@ -127,6 +127,24 @@ describe('isRetryableError parity with the SDK classifier', () => {
     expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
   });
 
+  it('retries a signing failure the SDK corrected its clock for, and an expired signature', () => {
+    const corrected = Object.assign(new Error('denied'), {
+      name: 'SignatureDoesNotMatch',
+      $metadata: { httpStatusCode: 403, clockSkewCorrected: true },
+    });
+    expect(isRetryableError(corrected, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+    const expired = Object.assign(new Error('Signature expired: ...'), {
+      name: 'InvalidSignatureException',
+      $metadata: { httpStatusCode: 403 },
+    });
+    expect(isRetryableError(expired, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+    const refused = Object.assign(new Error('The request signature we calculated does not match'), {
+      name: 'InvalidSignatureException',
+      $metadata: { httpStatusCode: 403 },
+    });
+    expect(isRetryableError(refused, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+  });
+
   it('retries the remaining Node network codes the SDK treats as transient', () => {
     for (const code of ['EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND']) {
       expect(

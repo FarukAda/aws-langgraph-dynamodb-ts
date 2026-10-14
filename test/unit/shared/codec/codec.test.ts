@@ -161,6 +161,41 @@ describe('encodePayload / decodePayload', () => {
     );
   });
 
+  /**
+   * The two apply together, in order: the payload is gzipped first, the
+   * gzipped bytes are what the offload threshold is judged on and what S3
+   * holds, and a read downloads then inflates. The object must hold the
+   * compressed form — the descriptor says `compressed: true` of it — or a
+   * reader that trusts the descriptor would inflate plain JSON.
+   */
+  it('compresses before offloading and inflates after downloading', async () => {
+    let stored: Uint8Array = new Uint8Array();
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[], objectId: string) =>
+        `pfx/${[...parts, objectId].join('/')}.bin`,
+      upload: jest.fn((key: string, data: Uint8Array) => {
+        stored = data;
+        return key;
+      }),
+      download: jest.fn(() => stored),
+      assertOwnedKey: () => undefined,
+    };
+    const deps = { serde, offloader: offloader as never, compression: { enabled: true } };
+    const big = { text: 'A'.repeat(4096) };
+    const descriptor = await encodePayload(big, deps, {
+      keyParts: ['t'],
+      objectId: 'ID',
+      row: { pk: 'PK', sk: 'SK' },
+    });
+    expect(descriptor).toMatchObject({ location: PayloadLocation.S3, compressed: true });
+    // gzip's magic bytes, and far fewer of them than the 4 KiB of text.
+    expect([stored[0], stored[1]]).toEqual([0x1f, 0x8b]);
+    expect(stored.length).toBeLessThan(200);
+    expect(await decodePayload(descriptor, deps, [])).toEqual(big);
+    expect(offloader.download).toHaveBeenCalledTimes(1);
+  });
+
   it('throws when asked to decode an S3 payload without an offloader', async () => {
     const descriptor = {
       location: PayloadLocation.S3 as const,
@@ -319,6 +354,32 @@ describe('persisted descriptor shape', () => {
       decodePayload(odd, { serde, offloader: offloader as never }, []),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
     expect(offloader.download).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A descriptor is read off a row, and a row can be anything: an `S3` one
+   * with no key, or an `INLINE` one with no bytes, is a shape no reader could
+   * make sense of, and is refused by name rather than reaching the download
+   * or the decompressor as a `TypeError`.
+   */
+  it('refuses an offloaded descriptor with no object key, and an inline one with no bytes, by name', async () => {
+    const offloader = { download: jest.fn(), assertOwnedKey: jest.fn() };
+    const keyless = { location: PayloadLocation.S3, serdeType: 'json', compressed: false } as never;
+    await expect(
+      decodePayload(keyless, { serde, offloader: offloader as never }, []),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
+    expect(offloader.assertOwnedKey).not.toHaveBeenCalled();
+    expect(offloader.download).not.toHaveBeenCalled();
+
+    const byteless = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+    } as never;
+    await expect(decodePayload(byteless, { serde }, [])).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'descriptor' },
+    });
   });
 
   /**

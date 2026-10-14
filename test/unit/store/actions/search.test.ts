@@ -85,18 +85,27 @@ describe('searchItems', () => {
     expect(items[0].score).toBeGreaterThan(items[1].score ?? 0);
   });
 
-  it('honors offset and limit', async () => {
+  /**
+   * The page is a window on the full ordering, on both paths: the plain path
+   * reads `users` as `a`, `b` in key order, so offset 1 is `b`; the ranked
+   * path orders `b`, `a` for this query, so offset 1 is `a`.
+   */
+  it('honors offset and limit as a window on the ordering of each path', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: await records(context(client)) });
-    const items = await searchItems(
+    const plain = await searchItems(
       context(client),
-      parsedSearch({
-        namespacePrefix: ['users'],
-        limit: 1,
-        offset: 1,
-      }),
+      parsedSearch({ namespacePrefix: ['users'], limit: 1, offset: 1 }),
     );
-    expect(items).toHaveLength(1);
+    expect(plain.map((item) => item.key)).toEqual(['b']);
+
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
+    const ranked = await searchItems(
+      ctx,
+      parsedSearch({ namespacePrefix: ['users'], query: 'find b', limit: 1, offset: 1 }),
+    );
+    expect(ranked.map((item) => item.key)).toEqual(['a']);
   });
 
   it('ranks an indexed item with no stored embedding last with an undefined score', async () => {
@@ -146,7 +155,8 @@ describe('searchItems', () => {
       }),
     );
     expect(items.map((i) => i.key).sort()).toEqual(['a', 'b']);
-    expect(items.every((i) => i.score === undefined)).toBe(true);
+    // An own `score` of `undefined`, as the reference store shapes an unranked item.
+    expect(items.every((i) => 'score' in i && i.score === undefined)).toBe(true);
   });
 
   it('delegates ranking to a vector backend and hydrates the matches', async () => {

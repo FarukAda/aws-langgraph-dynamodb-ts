@@ -1,10 +1,14 @@
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
+import { ERROR } from '@langchain/langgraph-checkpoint';
 
 import {
   type CheckpointWriteRow,
   dropSupersededWrites,
   parseHeadRow,
   parseMetaRow,
+  compareByCodePoint,
+  compareWriteOrder,
+  parseWriteRow,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -210,6 +214,168 @@ describe('toPendingWrites offloaded reads', () => {
   });
 });
 
+/**
+ * The order the reference reads a checkpoint's writes back in from
+ * `@langchain/langgraph-checkpoint@1.2.0` (`writesSortKey`): task path, then
+ * task id, then index — strings compared by code point, so an astral path
+ * sorts after every BMP one where UTF-16 code units would put it first. A row
+ * written before paths existed carries none and sorts first, as the
+ * reference's own pre-path records do.
+ */
+describe('compareByCodePoint', () => {
+  it('orders by code point, so an astral character sorts after every BMP one', () => {
+    expect(compareByCodePoint('\uE000', '\u{10000}')).toBeLessThan(0);
+    expect(compareByCodePoint('\u{10000}', '\uE000')).toBeGreaterThan(0);
+    expect(compareByCodePoint('a', 'b')).toBeLessThan(0);
+  });
+
+  it('steps over a shared astral character and decides on what follows', () => {
+    expect(compareByCodePoint('\u{10000}a', '\u{10000}b')).toBeLessThan(0);
+    expect(compareByCodePoint('\u{10000}b', '\u{10000}a')).toBeGreaterThan(0);
+  });
+
+  it('puts a prefix before the string it starts, and equal strings level', () => {
+    expect(compareByCodePoint('~pull', '~pull, a')).toBeLessThan(0);
+    expect(compareByCodePoint('~pull, a', '~pull')).toBeGreaterThan(0);
+    expect(compareByCodePoint('', '')).toBe(0);
+    expect(compareByCodePoint('~pull, a', '~pull, a')).toBe(0);
+  });
+
+  /** An unpaired surrogate compares as its own value, as the reference's comparator treats it. */
+  it('compares an unpaired surrogate by its own code unit', () => {
+    expect(compareByCodePoint('\uD800', '\uE000')).toBeLessThan(0);
+  });
+});
+
+describe('compareWriteOrder', () => {
+  const row = (over: Partial<CheckpointWriteRow>): CheckpointWriteRow => ({
+    PK: 'CHKPT#t',
+    SK: 'WRITE##c#t#0000000008#ch',
+    taskId: 't',
+    index: 0,
+    channel: 'ch',
+    writeGroup: 'g',
+    value: {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new Uint8Array(),
+    },
+    ...over,
+  });
+
+  it('decides by task path, then task id, then index, then channel', () => {
+    expect(compareWriteOrder(row({ taskPath: '~a' }), row({ taskPath: '~b' }))).toBeLessThan(0);
+    expect(compareWriteOrder(row({ taskId: 'a' }), row({ taskId: 'b' }))).toBeLessThan(0);
+    expect(compareWriteOrder(row({ index: -1 }), row({ index: 0 }))).toBeLessThan(0);
+    expect(compareWriteOrder(row({ channel: 'x' }), row({ channel: 'y' }))).toBeLessThan(0);
+    expect(compareWriteOrder(row({}), row({}))).toBe(0);
+  });
+
+  it('sorts a row with no path as the empty path, before every row with one', () => {
+    expect(compareWriteOrder(row({}), row({ taskPath: '~a' }))).toBeLessThan(0);
+    expect(compareWriteOrder(row({ taskPath: '' }), row({}))).toBe(0);
+  });
+});
+
+describe('toPendingWrites orders the writes as the reference does', () => {
+  const rows = (taskId: string, writes: PendingWrite[], taskPath?: string) =>
+    writeItems(
+      context(),
+      't',
+      '',
+      'ckpt-1',
+      taskId,
+      writes,
+      `g-${taskId}`,
+      undefined,
+      undefined,
+      taskPath,
+    );
+
+  it('sorts by task path, then task id, then index, comparing strings by code point', async () => {
+    const items = [
+      ...(await rows(
+        'ffffffff',
+        Array.from({ length: 11 }, (_u, i) => ['ch', `a${i}`]),
+        '~pull, 02',
+      )),
+      ...(await rows('88888888', [['ch', 'input']])),
+      ...(await rows('00000000', [['ch', 'b']], '~pull, 01')),
+      ...(await rows('99999999', [['ch', 'bmp']], '~pull, \uE000')),
+      ...(await rows('aaaaaaaa', [['ch', 'astral']], '~pull, \u{10000}')),
+    ];
+    const pending = await toPendingWrites(context(), items, 't');
+    expect(pending.map((write) => write[2])).toEqual([
+      'input',
+      'b',
+      ...Array.from({ length: 11 }, (_u, i) => `a${i}`),
+      'bmp',
+      'astral',
+    ]);
+  });
+
+  it('keeps a special channel ahead of the regular writes of its task, as its negative index says', async () => {
+    const items = await rows(
+      'task-1',
+      [
+        ['messages', 'm'],
+        [ERROR, 'boom'],
+      ],
+      '~pull, node',
+    );
+    const pending = await toPendingWrites(context(), [...items].reverse(), 't');
+    expect(pending.map((write) => write[1])).toEqual([ERROR, 'messages']);
+  });
+
+  it('orders two channels at one index of one task by channel, so the answer never depends on the read', async () => {
+    const items = [
+      ...(await rows('task-1', [['y', 2]], '~p')),
+      ...(await rows('task-1', [['x', 1]], '~p')),
+    ];
+    const pending = await toPendingWrites(context(), items, 't');
+    expect(pending.map((write) => write[1])).toEqual(['x', 'y']);
+  });
+});
+
+describe('parseWriteRow', () => {
+  const write = {
+    PK: 'CHKPT#t',
+    SK: 'WRITE##c1#task-1#0000000008#ch',
+    taskId: 'task-1',
+    channel: 'ch',
+    writeGroup: 'g1',
+    index: 0,
+    value: { location: 'INLINE', serdeType: 'json', compressed: false, bytes: new Uint8Array() },
+  };
+
+  it('reads a pending write of this adapter, with or without the fields later releases added', () => {
+    expect(parseWriteRow(write)).toBe(write);
+    expect(parseWriteRow({ ...write, v: 1, occurrence: 2 })).toBeDefined();
+    const { writeGroup: _g, ...beforeGroups } = write;
+    expect(parseWriteRow(beforeGroups)).toBeDefined();
+    expect(parseWriteRow({ ...write, taskPath: '~pull, node' })?.taskPath).toBe('~pull, node');
+  });
+
+  it('answers undefined for a row whose task path is not a string', () => {
+    expect(parseWriteRow({ ...write, taskPath: 7 })).toBeUndefined();
+  });
+
+  it('answers undefined for a row lacking the task id, the channel or a descriptor', () => {
+    const { taskId: _t, ...noTask } = write;
+    const { channel: _c, ...noChannel } = write;
+    expect(parseWriteRow(noTask)).toBeUndefined();
+    expect(parseWriteRow(noChannel)).toBeUndefined();
+    expect(parseWriteRow({ ...write, value: 'not a descriptor' })).toBeUndefined();
+  });
+
+  it('refuses a row a newer release wrote before judging its shape', () => {
+    expect(() => parseWriteRow({ PK: 'CHKPT#t', SK: 'WRITE##c1#x', v: 99 })).toThrow(
+      /format version 99/,
+    );
+  });
+});
+
 describe('parseMetaRow refuses a row from a newer format version', () => {
   const meta = {
     PK: 'CHKPT#t',
@@ -348,13 +514,13 @@ describe('parseHeadRow', () => {
   };
 
   it('returns the item for a real head row', () => {
-    expect(parseHeadRow(ctx(), head)?.checkpointId).toBe('c1');
+    expect(parseHeadRow(ctx(), head, 'getTuple')?.checkpointId).toBe('c1');
   });
 
   /** An absent row is an ordinary answer, not something to warn about. */
   it('answers undefined silently when the read returned nothing', () => {
     const warn = jest.fn();
-    expect(parseHeadRow(ctx(warn), undefined)).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), undefined, 'getTuple')).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -364,7 +530,7 @@ describe('parseHeadRow', () => {
    */
   it('skips a foreign row at the head and reports its sort key', () => {
     const warn = jest.fn();
-    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' }, 'getTuple')).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });

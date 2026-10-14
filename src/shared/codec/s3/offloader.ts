@@ -12,9 +12,9 @@
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
 import { isAbortError } from '../../dynamodb/abort.js';
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client.js';
 import {
   fullJitter,
+  INITIAL_BACKOFF_DELAY_MS,
   isTransientS3Error,
   nextBackoffDelay,
   type RetryAttemptInfo,
@@ -29,7 +29,7 @@ import { absorbLoggerFailure, type Logger, SILENT_LOGGER } from '../../logging/l
 import { redactedMessage } from '../../logging/secret-patterns.js';
 import { truncateForLog } from '../../logging/truncate.js';
 import type { S3ClientConfigLike } from './client-types.js';
-import { createDefaultS3Client, loadS3Sdk } from './client.js';
+import { createDefaultS3Client, loadS3Sdk, withS3ClientDefaults } from './client.js';
 import {
   assertKeyInScope,
   buildS3Key,
@@ -45,6 +45,13 @@ export const DEFAULT_S3_THRESHOLD_BYTES = 350 * 1024;
 
 /** Default S3 server-side encryption algorithm. */
 export const DEFAULT_S3_SSE = 'AES256';
+
+/**
+ * The attempts an S3 upload, download or best-effort delete makes on a
+ * transient failure — the budget the README's *Retries and backoff* states
+ * as "3 attempts total", fixed here and independent of the adapter's `retry`.
+ */
+const S3_MAX_ATTEMPTS = 3;
 
 /**
  * Default cap on an offloaded object buffered from S3 (50 MiB), checked against
@@ -109,18 +116,12 @@ export class S3Offloader {
       // The hook is typed structurally for consumers; the runtime modules use
       // the real SDK client. It hands over a constructor, not a configuration,
       // so a caller who supplies one has not opted out of the bound: the same
-      // default handler {@link createDefaultS3Client} applies reaches it, for
-      // the reason recorded there. `cfg` still spreads last, so a caller who
-      // does want to replace it puts a `requestHandler` in `clientConfig`.
+      // defaults {@link createDefaultS3Client} builds with reach it, for the
+      // reason recorded there. A caller who does want to replace the handler
+      // puts a `requestHandler` in `clientConfig`.
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(
-              this.config.createS3Client({
-                maxAttempts: 1,
-                requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
-                ...cfg,
-              }) as S3Client,
-            )
+          ? Promise.resolve(this.config.createS3Client(withS3ClientDefaults(cfg)) as S3Client)
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {
@@ -470,7 +471,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
           request,
         ),
       {
-        maxAttempts: 3,
+        maxAttempts: S3_MAX_ATTEMPTS,
         isRetryable: isTransientS3Error,
         signal: params.signal,
         onRetry: params.onRetry,
@@ -558,7 +559,7 @@ export async function downloadObject(
         }
         return readBodyBounded(response.Body, key, maxBytes);
       },
-      { maxAttempts: 3, isRetryable: isTransientS3Error, signal, onRetry },
+      { maxAttempts: S3_MAX_ATTEMPTS, isRetryable: isTransientS3Error, signal, onRetry },
     );
   } catch (error) {
     rethrowIfCancelled(error as Error);
@@ -743,27 +744,6 @@ export function backlinkMetadata(row: BacklinkRow): Record<string, string> {
   return { [PK_FIELD]: encodeKeyPart(row.pk), [SK_FIELD]: encodeKeyPart(row.sk) };
 }
 
-/**
- * The total UTF-8 bytes `metadata` costs against S3's 2 KB user-metadata cap.
- *
- * Accepts: any metadata map. Names and values both count, which is how S3
- * measures it.
- *
- * Returns: the byte total.
- *
- * Throws: nothing.
- */
-export function metadataBytes(metadata: Record<string, string>): number {
-  return Object.entries(metadata).reduce(
-    (total, [name, value]) =>
-      total + Buffer.byteLength(name, 'utf8') + Buffer.byteLength(value, 'utf8'),
-    0,
-  );
-}
-
-const DEFAULT_MAX_ATTEMPTS = 3;
-const BASE_DELAY_MS = 100;
-
 /** What one release of orphaned objects needs. */
 export interface OrphanRelease {
   /** The keys to delete; an absent or empty one is skipped. */
@@ -833,8 +813,8 @@ function selectOrphans(offloader: S3Offloader, release: OrphanRelease): string[]
  *
  * Returns: nothing.
  *
- * Throws: **nothing**, ever. This is the library's sole non-throwing path: a
- * cleanup failure must not mask the write failure that caused it. Every
+ * Throws: **nothing**, ever: a cleanup failure must not mask the write
+ * failure that caused it. Every
  * outcome that is not a clean delete is logged at `warn`, carrying counts and
  * the failing error's *name* — never its message, which can hold a credential
  * fragment. A `logger` that throws is one more thing this absorbs (see
@@ -854,8 +834,8 @@ export async function cleanUpS3Orphans(
 ): Promise<void> {
   const orphans = selectOrphans(offloader, release);
   if (orphans.length === 0) return;
-  const maxAttempts = release.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  let delay = BASE_DELAY_MS;
+  const maxAttempts = release.maxAttempts ?? S3_MAX_ATTEMPTS;
+  let delay = INITIAL_BACKOFF_DELAY_MS;
   let lastError = new Error('S3 orphan cleanup did not run');
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {

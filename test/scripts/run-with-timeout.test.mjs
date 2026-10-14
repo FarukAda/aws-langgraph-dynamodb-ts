@@ -11,7 +11,7 @@
  * fake would only prove the wrapper calls the functions it calls.
  */
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -135,6 +135,57 @@ describe('runWithTimeout', () => {
 });
 
 describe('the CLI', () => {
+  it(
+    'takes the whole process tree with it when it is itself told to stop',
+    { skip: process.platform === 'win32' && 'a console Ctrl-C already reaches every process on Windows' },
+    async () => {
+      // The caller ends the wrapper early — Ctrl-C, a parent's own timeout —
+      // while the command it runs is still going. A wrapper that merely died
+      // would leave that command running with nobody left to kill it: the
+      // orphaned test tree this wrapper exists to prevent, created by the
+      // wrapper itself. The grandchild appends to a heartbeat file so its
+      // survival is observable from outside.
+      const heartbeat = join(sandbox, 'heartbeat-signal.txt');
+      writeFileSync(heartbeat, '');
+      const spawnerScript = join(sandbox, 'spawner-signal.cjs');
+      const grandchildCode =
+        "setInterval(() => require('fs').appendFileSync(process.env.HEARTBEAT_PATH, 'x'), 50);";
+      writeFileSync(
+        spawnerScript,
+        [
+          "const { spawn } = require('child_process');",
+          `spawn(process.execPath, ['-e', ${JSON.stringify(grandchildCode)}], { stdio: 'ignore' });`,
+          'setInterval(() => {}, 1000);',
+        ].join('\n'),
+      );
+      const wrapper = spawn(process.execPath, [SCRIPT, '60', '--', process.execPath, spawnerScript], {
+        env: { ...process.env, HEARTBEAT_PATH: heartbeat },
+        stdio: 'ignore',
+      });
+      const exited = new Promise((resolve) => {
+        wrapper.on('exit', (code, signal) => resolve({ code, signal }));
+      });
+      // Wait until the grandchild is demonstrably alive before stopping the wrapper.
+      for (let waited = 0; readFileSync(heartbeat, 'utf8').length === 0 && waited < 5000; waited += 50) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.ok(readFileSync(heartbeat, 'utf8').length > 0, 'the grandchild never started');
+
+      wrapper.kill('SIGTERM');
+      const outcome = await exited;
+      assert.notEqual(outcome.code, 0, 'a wrapper stopped early must not report success');
+
+      const sizeJustAfter = readFileSync(heartbeat, 'utf8').length;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const sizeLater = readFileSync(heartbeat, 'utf8').length;
+      assert.equal(
+        sizeLater,
+        sizeJustAfter,
+        `the heartbeat file grew from ${sizeJustAfter} to ${sizeLater} bytes after the wrapper was stopped; the grandchild outlived it`,
+      );
+    },
+  );
+
   it('propagates the wrapped command\'s exit code', () => {
     const result = spawnSync(process.execPath, [SCRIPT, '5', '--', process.execPath, '-e', 'process.exit(9)']);
     assert.equal(result.status, 9);

@@ -1,10 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import {
+  pinnedTypeImports,
   publicDeclarations,
   publicDeclarationsOf,
   publicExports,
+  publicTypeExports,
   unguardedMethods,
   unguardedPublicMethods,
 } from './guards/public-declarations';
+import { SRC_ROOT } from './guards/source-files';
 
 const IMPORT = "import { guardPublic } from './shared/errors/boundary';\n";
 
@@ -205,5 +211,44 @@ describe('the public API', () => {
         'function backfillRecencyIndex',
       ]),
     );
+  });
+});
+
+describe('publicTypeExports and pinnedTypeImports', () => {
+  it('read the type names an entry exports and a test imports, type-only specifiers included', () => {
+    const entry = [
+      "export type { A, B } from './x';",
+      "export { type C, value } from './y';",
+      "export { other } from './z';",
+    ].join('\n');
+    expect(publicTypeExports(entry)).toEqual(['A', 'B', 'C']);
+    const test = [
+      "import type { A, B } from '../../src/index';",
+      "import { type C, value } from '../../src/index';",
+      "import type { Elsewhere } from '../../src/other';",
+    ].join('\n');
+    expect(pinnedTypeImports(test)).toEqual(['A', 'B', 'C']);
+  });
+});
+
+/**
+ * The import list in test/types/public-surface.test.ts is the lock on the
+ * public types, but a lock a compiler checks in one direction only: a type
+ * removed from `src/index.ts` fails that import, while one added there
+ * compiles with nobody having decided it belongs on the surface. This closes
+ * the other direction, so adding a public type is a change made in both files.
+ */
+describe('the public type surface is pinned in both directions', () => {
+  it('exports from src/index.ts exactly the types test/types/public-surface.test.ts imports', () => {
+    const entry = readFileSync(resolve(SRC_ROOT, 'index.ts'), 'utf8');
+    const pin = readFileSync(
+      resolve(SRC_ROOT, '..', 'test', 'types', 'public-surface.test.ts'),
+      'utf8',
+    );
+    // A class is pinned with `import type` too, as the type it also is; only
+    // the type-only exports are compared, both ways.
+    const values = new Set(publicExports(entry).map((entry) => entry.name));
+    const pinned = pinnedTypeImports(pin).filter((name) => !values.has(name));
+    expect([...publicTypeExports(entry)].sort()).toEqual([...pinned].sort());
   });
 });

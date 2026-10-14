@@ -81,7 +81,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Returns: the tuple, or `undefined` for an unknown thread, an unknown
    * checkpoint, a config naming no thread, or a checkpoint whose payload row is
-   * not there yet.
+   * gone — a thread being deleted, or an expiry sweep that reached it first.
    *
    * Throws: `VALIDATION`, before any read, naming `config` for a config that
    * is not an object, `configurable` for a `configurable` that is present and
@@ -110,7 +110,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Stream checkpoints newest first.
+   * Stream checkpoints newest first — within a thread, and across threads
+   * through the recency index; the table scan a thread-less call falls back to
+   * without `indexName` yields in the table's own order, oldest first within a
+   * thread and threads in no particular order.
    *
    * Accepts: `config` — one namespace, every namespace of a thread when
    * `checkpoint_ns` is omitted, or every thread in the table when `thread_id`
@@ -130,7 +133,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `thread_ts` for a malformed identifier — all checked before `options`;
    * then `options` for options that are not an object, `filter` for a filter
    * that is not an object, `limit` for a limit that is not an integer from 0 to
-   * `MAX_PAGE_LIMIT` (10,000), and `before` for a `before` that is not an
+   * 10,000, and `before` for a `before` that is not an
    * object or whose `configurable.checkpoint_id` is
    * neither absent (`undefined`, `null` or `''`) nor a well-formed checkpoint
    * id. `FORMAT_UNSUPPORTED`; `RESULT_TRUNCATED`, without a `thread_id` and
@@ -188,11 +191,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
-    newVersions?: ChannelVersions,
+    _newVersions?: ChannelVersions,
   ): Promise<RunnableConfig> {
     return guardPublic(
       'saver.put',
-      () => putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
+      () => putCheckpoint(this.context, config, checkpoint, metadata),
       this.context.tableName,
     );
   }
@@ -206,11 +209,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `[channel, value]` arrays, one row each: a special channel's row is
    * written alongside the rest, a regular row at most 32 at a time; an empty
    * list writes nothing. `taskId` — validated as the key segment it becomes.
+   * `taskPath` — the task's serialized path, which LangGraph 1.5 passes
+   * (`@langchain/langgraph-checkpoint@1.2.0`) and earlier LangGraphs do not;
+   * stored beside every row of the call, and the first key of the order
+   * `getTuple`, `list` and `getDeltaChannelHistory` read a checkpoint's
+   * writes back in (the reference's `writesSortKey`: path, then task id, then
+   * index, strings compared by code point). A row written without one sorts
+   * as the empty path, first.
    *
    * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
    * a failure.
    *
-   * Throws: `VALIDATION` naming `taskId` for a malformed task id; `config`,
+   * Throws: `VALIDATION` naming `taskId` for a malformed task id, or
+   * `taskPath` for a path that is not a string; `config`,
    * `configurable` or `signal` for a config of the wrong shape; `thread_id`,
    * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier, and `checkpoint_id` when the config names none; `writes` for
@@ -231,10 +242,15 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * before the write, when a failed write cannot be verified, or in one
    * double-fault interleaving (see the README's S3 offloading notes).
    */
-  async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+  async putWrites(
+    config: RunnableConfig,
+    writes: PendingWrite[],
+    taskId: string,
+    taskPath?: string,
+  ): Promise<void> {
     return guardPublic(
       'saver.putWrites',
-      () => putWritesAction(this.context, config, writes, taskId),
+      () => putWritesAction(this.context, config, writes, taskId, taskPath),
       this.context.tableName,
     );
   }
@@ -242,7 +258,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   /**
    * Delete every checkpoint, payload and pending write of a thread.
    *
-   * Accepts: `threadId` — validated. `options.signal` — aborts between pages.
+   * Accepts: `threadId` — validated. `options.signal` — ends the read or
+   * delete in flight and any wait between them; the deletes already
+   * acknowledged stay deleted.
    *
    * Returns: nothing. Deleting a thread that does not exist is not an error.
    *
@@ -307,7 +325,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * is not an array of strings, and, once a channel is named, `thread_id`,
    * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier; `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
-   * expired; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`, which a walk
+   * expired or is gone, or the chain of parents loops; a classified AWS
+   * failure; `RETRY_EXHAUSTED`; `ABORTED`, which a walk
    * cancelled as it reached an expired ancestor reports in place of
    * `ANCESTOR_EXPIRED`.
    *

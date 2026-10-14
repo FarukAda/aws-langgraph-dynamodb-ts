@@ -103,12 +103,20 @@ describe('the drain obeys the configured retry policy', () => {
     return delays;
   }
 
-  function onePartialRound(mock: ReturnType<typeof createStrictDocumentMock>['mock']): void {
+  /** The first `partial` rounds leave one request unprocessed; the next drains. */
+  function partialRounds(
+    mock: ReturnType<typeof createStrictDocumentMock>['mock'],
+    partial: number,
+  ): void {
     let rounds = 0;
     mock.on(BatchWriteCommand).callsFake(() => {
       rounds += 1;
-      return rounds === 1 ? { UnprocessedItems: { t: [put('b')] } } : {};
+      return rounds <= partial ? { UnprocessedItems: { t: [put('b')] } } : {};
     });
+  }
+
+  function onePartialRound(mock: ReturnType<typeof createStrictDocumentMock>['mock']): void {
+    partialRounds(mock, 1);
   }
 
   it('waits the configured base delay between rounds, not the module default', async () => {
@@ -128,5 +136,37 @@ describe('the drain obeys the configured retry policy', () => {
     const delays = recordDelays();
     await drainUnprocessedWrites(client, 't', [put('a'), put('b')], { rng: () => 1 });
     expect(delays).toEqual([100]);
+  });
+
+  /**
+   * The cap bounds every wait, the first included. A policy that only lowers
+   * it sits below the default base, which the first wait would otherwise use
+   * whole.
+   */
+  it('holds the first wait under a cap lowered below the base', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    onePartialRound(mock);
+    const delays = recordDelays();
+    await drainUnprocessedWrites(client, 't', [put('a'), put('b')], {
+      retry: { maxDelayMs: 10 },
+      rng: () => 1,
+    });
+    expect(delays).toEqual([10]);
+  });
+
+  /**
+   * The same rule `withRetry` applies: a base given above the default cap,
+   * with no cap of its own, is the delay the caller asked for on every round
+   * rather than on the first one only.
+   */
+  it('raises the default cap to a base delay given above it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    partialRounds(mock, 2);
+    const delays = recordDelays();
+    await drainUnprocessedWrites(client, 't', [put('a'), put('b')], {
+      retry: { baseDelayMs: 20_000 },
+      rng: () => 1,
+    });
+    expect(delays).toEqual([20_000, 20_000]);
   });
 });

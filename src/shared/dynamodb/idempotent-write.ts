@@ -123,13 +123,14 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * token, which is required rather than merely tidy: the re-pinned request
  * carries a different `ConditionExpression`, and the same token presented with
  * changed parameters inside the window is refused with
- * `IdempotentParameterMismatchException` — a name that appears in no retry
- * list and in no handler in this package, so reusing a token would surface a
- * raw SDK error to a caller. That refusal is only observable against real
+ * `IdempotentParameterMismatchException` — classified as `AWS_REJECTED` and
+ * never retried, so reusing a token would fail the caller's write with that
+ * error instead of applying the re-pin. That refusal is only observable against real
  * DynamoDB: the local image does not reserve a cancelled token's parameters
- * and simply re-evaluates the changed body, so the unit and integration tiers
- * can assert only that two re-pins carry different tokens, and the refusal
- * itself belongs to the tier that runs against AWS.
+ * and simply re-evaluates the changed body, so the integration tier, on
+ * DynamoDB Local, can assert only that two re-pins carry different tokens —
+ * the unit tier mocks the client — and the refusal itself belongs to the
+ * tier that runs against AWS.
  *
  * **At most one guarded action, and only ever as many actions as must land
  * together.** A cancellation is read as a guard rejection only while exactly
@@ -202,7 +203,7 @@ export async function transactIdempotently(
  * Commit one row under a request token; see {@link transactIdempotently} for
  * why the write takes a transaction's shape and what the token buys.
  *
- * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
+ * Accepts: `deps` — the adapter's client, table and retry policy. `row` — the
  * row to commit. It is captured by reference and re-sent unchanged on every
  * attempt of the budget, so a caller must not mutate it while this call is in
  * flight: the re-send would carry the same token with different parameters,
@@ -223,11 +224,11 @@ export async function transactIdempotently(
  */
 export async function putIdempotently(
   deps: RowWriteDeps,
-  item: AttributeMap,
+  row: AttributeMap,
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
-  await transactIdempotently(deps, [{ Put: { TableName: deps.tableName, Item: item, ...guard } }], {
+  await transactIdempotently(deps, [{ Put: { TableName: deps.tableName, Item: row, ...guard } }], {
     signal,
   });
 }
@@ -316,7 +317,8 @@ export async function commitRow(
  * unconditionally. Kept small on purpose: DynamoDB charges write capacity for a
  * *failed* conditional write too, sized on the existing item, so an aggressive
  * loop turns contention into cost. Three attempts settle every realistic race,
- * and the fallback is exactly the pre-0.9.0 behaviour rather than an error.
+ * and the fallback is an unconditional write — one possible orphaned object,
+ * reclaimed by the lifecycle rule — rather than an error.
  */
 export const OVERWRITE_CAS_MAX_ATTEMPTS = 3;
 
@@ -352,8 +354,9 @@ const RETURN_REJECTED_ROW = { ReturnValuesOnConditionCheckFailure: 'ALL_OLD' } a
  * because neither writer can learn of an object it never saw; only refusing the
  * second write until it re-reads can.
  *
- * A row with no revision attribute was written before 0.9.0. Pinning its
- * *absence* is what makes the swap correct across an upgrade: the first writer
+ * A row with no revision attribute was written before the attribute existed
+ * — 0.9.0 for a store row's `rev`, 0.8.0 for a write row's `writeGroup`.
+ * Pinning its *absence* is what makes the swap correct across an upgrade: the first writer
  * to touch such a row stamps one, and any racer still holding the pre-upgrade
  * observation is turned away.
  *
@@ -537,7 +540,7 @@ export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
 
 /** Which row to read, and which attributes of it to project. */
 export interface RowRead {
-  key: { PK: string; SK: string };
+  key: RowKey;
   /** The attribute carrying the row's identity; always projected. */
   attribute: string;
   /** Further attributes to project, when the caller needs the row itself back. */
@@ -639,21 +642,20 @@ export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): Writ
  *
  * Accepts: `failure` — what the write threw.
  *
- * Returns: true for `ABORTED`; for a spent retry budget, the record
- * `withRetry` kept across every attempt it made (`retryBudgetMayStillLand`),
- * or — when that record does not say so — the last attempt's own failure
- * judged by itself (`mayStillBeInFlight`), which is what a `RETRY_EXHAUSTED`
- * error built outside `withRetry` falls back to, carrying no record of its
- * own; for any other failure, judged by itself (`mayStillBeInFlight`).
+ * Returns: true for `ABORTED`, and for any failure carrying the record
+ * `withRetry` kept across every attempt of its budget
+ * (`retryBudgetMayStillLand`) — a spent budget, or a refusal that ended one
+ * after an attempt that got no answer. Without that record, a spent budget is
+ * judged by its last attempt's own failure (`mayStillBeInFlight`), which is
+ * what a `RETRY_EXHAUSTED` error built outside `withRetry` falls back to; any
+ * other failure is judged by itself the same way.
  *
  * Throws: nothing, for any value.
  */
 export function mayStillLand(failure: Error): boolean {
-  if (isAbortError(failure)) return true;
+  if (isAbortError(failure) || retryBudgetMayStillLand(failure)) return true;
   if (hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)) {
-    return (
-      retryBudgetMayStillLand(failure) || mayStillBeInFlight(failure.cause as Error | undefined)
-    );
+    return mayStillBeInFlight(failure.cause as Error | undefined);
   }
   return mayStillBeInFlight(failure);
 }

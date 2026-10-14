@@ -31,7 +31,7 @@ describe('probeAncestor', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { PK: 'CHKPT#t', SK: 'META##c1' } });
     const stop = await probeAncestor(context(client), parent);
-    expect(stop).toEqual({ threadId: 't', checkpointId: 'c1', expired: false });
+    expect(stop).toEqual({ threadId: 't', checkpointId: 'c1', stop: 'gone' });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
       PK: 'CHKPT#t',
       SK: 'META##c1',
@@ -40,19 +40,22 @@ describe('probeAncestor', () => {
   });
 
   /**
-   * The whole point of this read: an ancestor that exists but has expired is
-   * data loss, while one that was never written is an ordinary root.
+   * The point of this read: it sees an expired row, which every other read
+   * hides, so the error can say whether the ancestor is still stored or has
+   * already been swept. Both are holes in the thread.
    */
-  it('reports an expired ancestor as present, unlike every other read', async () => {
+  it('reports an expired ancestor as still stored, unlike every other read', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { PK: 'CHKPT#t', SK: 'META##c1', ttl: 1 } });
-    await expect(probeAncestor(context(client), parent)).resolves.toMatchObject({ expired: true });
+    await expect(probeAncestor(context(client), parent)).resolves.toMatchObject({
+      stop: 'expired',
+    });
   });
 
-  it('reports a checkpoint that was never written as present-but-not-expired', async () => {
+  it('reports a checkpoint with no row as gone', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    await expect(probeAncestor(context(client), parent)).resolves.toMatchObject({ expired: false });
+    await expect(probeAncestor(context(client), parent)).resolves.toMatchObject({ stop: 'gone' });
   });
 
   /** A pointer naming no thread or no checkpoint addresses nothing that could have expired. */
@@ -79,7 +82,9 @@ describe('probeAncestor', () => {
 });
 
 describe('ancestorExpired', () => {
-  const error = ancestorExpired({ threadId: 't', checkpointId: 'c1', expired: true }, ['messages']);
+  const error = ancestorExpired({ threadId: 't', checkpointId: 'c1', stop: 'expired' }, [
+    'messages',
+  ]);
 
   it('carries the code, the thread and the checkpoint a caller branches on', () => {
     expect(error.code).toBe(ErrorCode.ANCESTOR_EXPIRED);
@@ -102,7 +107,7 @@ describe('ancestorExpired', () => {
     const checkpointId = 'c'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const threadId = 't'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const channels = Array.from({ length: MAX_LOGGED_LABELS + 5 }, (_unused, at) => `ch${at}`);
-    const bounded = ancestorExpired({ checkpointId, threadId, expired: true }, channels);
+    const bounded = ancestorExpired({ checkpointId, threadId, stop: 'expired' }, channels);
     expect(bounded.context).toMatchObject({ threadId, checkpointId });
     expect(bounded.message).not.toContain(checkpointId);
     expect(bounded.message).not.toContain(threadId);

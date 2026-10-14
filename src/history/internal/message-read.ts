@@ -197,7 +197,11 @@ export async function countLiveMessages(
   signal?: AbortSignal,
 ): Promise<number> {
   const now = nowSeconds();
-  const query = messageQuery(context.tableName, sessionId);
+  // Consistent, because the number is written back under a pin on the stored
+  // counter: that pin catches a counter that moved, not a count read off a
+  // stale replica, and a repair is run right after the append or rollback
+  // whose rows a replica may not hold yet.
+  const query = messageQuery(context.tableName, sessionId, { consistent: true });
   let total = 0;
   for await (const raw of paginateQuery({
     retry: retryFor(context, signal),

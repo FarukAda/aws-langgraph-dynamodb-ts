@@ -14,11 +14,13 @@
 import { nowMs } from '../clock.js';
 import { failureLabel, toError } from '../errors/base-error.js';
 import {
+  isCorrectedClockSkew,
   DEFAULT_RETRYABLE_ERRORS,
+  MAX_CAUSE_DEPTH,
   mayStillBeInFlight,
   TRANSIENT_HTTP_STATUSES,
 } from '../errors/classify.js';
-import { retryExhaustedError } from '../errors/errors.js';
+import { markMayStillLand, retryExhaustedError } from '../errors/errors.js';
 import type { Logger } from '../logging/logger.js';
 import { redactedMessage } from '../logging/secret-patterns.js';
 import { truncateForLog } from '../logging/truncate.js';
@@ -137,12 +139,32 @@ interface ResolvedRetryOptions {
   rng: () => number;
 }
 
+/**
+ * The cap a backoff schedule runs under.
+ *
+ * Accepts: `baseDelayMs` — the schedule's first delay, already defaulted.
+ * `maxDelayMs` — the cap the caller named, if it named one.
+ *
+ * Returns: the named cap; without one, {@link MAX_BACKOFF_DELAY_MS} raised to
+ * a base above it.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: a base delay given without a cap is the delay the schedule
+ * starts from. Held under the default cap it would be cut to five seconds on
+ * every sleep: an option accepted and then ignored.
+ */
+export function backoffCapMs(baseDelayMs: number, maxDelayMs: number | undefined): number {
+  return maxDelayMs ?? Math.max(MAX_BACKOFF_DELAY_MS, baseDelayMs);
+}
+
 /** Apply defaults to {@link RetryOptions}. */
 function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
+  const baseDelayMs = options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS;
   return {
     maxAttempts: options.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
-    baseDelayMs: options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
-    maxDelayMs: options.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
+    baseDelayMs,
+    maxDelayMs: backoffCapMs(baseDelayMs, options.maxDelayMs),
     isRetryable:
       options.isRetryable ??
       ((error) => isRetryableError(error, options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS)),
@@ -163,7 +185,8 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * Accepts: `options.maxAttempts` — total attempts including the first, default
  * {@link DEFAULT_RETRY_MAX_ATTEMPTS}; at least 1, which `assertRetryPolicy`
  * enforces for every caller-supplied policy. `options.baseDelayMs` /
- * `maxDelayMs` — the backoff schedule. `options.isRetryable` — replaces
+ * `maxDelayMs` — the backoff schedule, its cap defaulted by
+ * {@link backoffCapMs}. `options.isRetryable` — replaces
  * `retryableErrors` entirely, so a call site can share one classifier with
  * paths that do not go through here. `options.signal` — checked before the
  * first attempt, handed to every attempt as `abortSignal` so the request in
@@ -210,8 +233,10 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * at entry, fired during an attempt, or fired during an earlier wait, is still
  * caught.
  *
- * Guarantees: `fn` is called at least once and at most `maxAttempts` times. A
- * thrown non-`Error` is wrapped, so what a caller catches is always an `Error`.
+ * Guarantees: `fn` is called at most `maxAttempts` times, and at least once
+ * unless the signal was already aborted at entry, when it is not called at
+ * all. A thrown non-`Error` is wrapped, so what a caller catches is always an
+ * `Error`.
  */
 export async function withRetry<T>(
   fn: (request: SdkRequestOptions) => Promise<T>,
@@ -246,7 +271,11 @@ export async function withRetry<T>(
       assertNotAborted(options.signal);
       lastError = toError(error as Error);
       if (mayStillBeInFlight(lastError)) mayStillLand = true;
-      if (!isRetryable(lastError)) throw lastError;
+      // A refusal ends the budget bare, not as `RETRY_EXHAUSTED`, so the
+      // record travels on the refusal itself: without it, a caller that reads
+      // a refusal as "applied nothing" would release what an earlier,
+      // unanswered attempt of this same budget may yet land.
+      if (!isRetryable(lastError)) throw mayStillLand ? markMayStillLand(lastError) : lastError;
       if (attempt === maxAttempts) break;
       const delayMs = delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng);
       if (crossesDeadline(options.deadlineAt, delayMs)) break;
@@ -279,9 +308,11 @@ export async function withDynamoDBRetry<T>(
   return withRetry(fn, { maxAttempts: DEFAULT_RETRY_MAX_ATTEMPTS, ...overrides });
 }
 
-const MAX_CAUSE_DEPTH = 32;
-
-/** What the cause chain says about an error: exact signal tokens, HTTP statuses, retryable trait. */
+/**
+ * What the cause chain says about an error: exact signal tokens, HTTP
+ * statuses, and whether the SDK itself marks it transient — by its
+ * `$retryable` trait, or as a signing failure it corrected its clock for.
+ */
 interface RetryEvidence {
   signals: string[];
   statuses: number[];
@@ -293,12 +324,13 @@ interface ErrorFields {
   code?: string;
   errno?: string;
   syscall?: string;
+  message?: string;
   cause?: Error;
-  $metadata?: { httpStatusCode?: number };
+  $metadata?: { httpStatusCode?: number; clockSkewCorrected?: boolean };
   $retryable?: object;
 }
 
-/** Add one node's signal tokens, HTTP status and retryable trait to `evidence`. */
+/** Add one node's signal tokens, HTTP status and the SDK's own transient verdict to `evidence`. */
 function recordNode(fields: ErrorFields, evidence: RetryEvidence): void {
   for (const value of [fields.name, fields.code, fields.errno, fields.syscall]) {
     if (typeof value === 'string') evidence.signals.push(value);
@@ -306,8 +338,8 @@ function recordNode(fields: ErrorFields, evidence: RetryEvidence): void {
   if (typeof fields.$metadata?.httpStatusCode === 'number') {
     evidence.statuses.push(fields.$metadata.httpStatusCode);
   }
-  if (fields.$retryable !== undefined && fields.$retryable !== null)
-    evidence.retryableByTrait = true;
+  const byTrait = fields.$retryable !== undefined && fields.$retryable !== null;
+  if (byTrait || isCorrectedClockSkew(fields)) evidence.retryableByTrait = true;
 }
 
 function collectEvidence(error: Error): RetryEvidence {
@@ -340,7 +372,8 @@ function collectEvidence(error: Error): RetryEvidence {
  *    transient. This verdict is final either way: a permanent reason arrives
  *    with the same HTTP status as a transient one, so the later rules cannot be
  *    allowed to overturn it. A cancellation carrying no reasons is not retried.
- * 2. any node carries the SDK's `$retryable` trait;
+ * 2. any node carries the SDK's `$retryable` trait, or is a signing failure
+ *    the SDK corrected its clock for or reports expired (`isCorrectedClockSkew`);
  * 3. any node's HTTP status is in {@link TRANSIENT_HTTP_STATUSES} — which is
  *    what classifies a failure the SDK could not map to a modeled exception,
  *    arriving as `name: 'Unknown'` with only a status;
@@ -374,7 +407,10 @@ export interface RetryPolicy {
   maxAttempts?: number;
   /** First backoff delay in milliseconds (default 100). */
   baseDelayMs?: number;
-  /** Cap on a single backoff delay in milliseconds (default 5000). */
+  /**
+   * Cap on a single backoff delay in milliseconds (default 5000, or
+   * `baseDelayMs` when that is given above it).
+   */
   maxDelayMs?: number;
 }
 
@@ -463,10 +499,11 @@ export function resolveRetryPolicy(
   logger: Logger,
   attemptFloor = 0,
 ): RetryOptions {
+  const baseDelayMs = policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS;
   const resolved = {
     maxAttempts: policy?.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
-    baseDelayMs: policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
-    maxDelayMs: policy?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
+    baseDelayMs,
+    maxDelayMs: backoffCapMs(baseDelayMs, policy?.maxDelayMs),
   };
   // Measured at the attempts the adapter will really make, not at the ones the
   // caller wrote. The history append raises a caller's count to its own floor

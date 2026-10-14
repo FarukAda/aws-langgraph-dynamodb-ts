@@ -96,6 +96,26 @@ describe('resolveDynamoDBClient', () => {
     });
   });
 
+  /**
+   * A config assembled from optional settings names the key and leaves its
+   * value undefined — `maxAttempts: fromEnvironment()` with nothing set. That
+   * names no override, and spread over the defaults it would take both away:
+   * the SDK's own three attempts would run inside every attempt of this
+   * library's, with no timeout on any of them.
+   */
+  it('keeps both defaults when clientConfig names them as undefined', () => {
+    const createClient = jest.fn().mockReturnValue(createFakeClient());
+    resolveDynamoDBClient({
+      clientConfig: { region: 'us-east-1', maxAttempts: undefined, requestHandler: undefined },
+      createClient,
+    });
+    expect(createClient).toHaveBeenCalledWith({
+      maxAttempts: 1,
+      requestHandler: EXPECTED_REQUEST_HANDLER,
+      region: 'us-east-1',
+    });
+  });
+
   it('builds a real DynamoDBClient through the default factory when no seam is given', () => {
     const resolved = resolveDynamoDBClient({ clientConfig: { region: 'us-east-1' } });
     expect(resolved.ownsClient).toBe(true);
@@ -154,9 +174,9 @@ describe('the request-handler bound on a client this library builds', () => {
 
   /**
    * Pinning the documented escape hatch, which is also the documented way to
-   * void the bound: `options.clientConfig` spreads last, so a caller's own
-   * `requestHandler` replaces this default whole. It does not merge, so a
-   * caller who supplies one without a timeout gets no timeout.
+   * void the bound: a `requestHandler` the config gives replaces this default
+   * whole. It does not merge, so a caller who supplies one without a timeout
+   * gets no timeout.
    */
   it("lets a caller's own requestHandler replace the default wholesale", () => {
     const createClient = seam();

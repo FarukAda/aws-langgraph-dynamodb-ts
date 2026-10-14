@@ -137,11 +137,13 @@ function configuredOffloader(deps: CodecDeps): S3Offloader {
  * hold anything its writer stored, and reading `.schemaVersion` off `null`
  * raised a raw `TypeError` out of a public method.
  *
- * The newer schema is the one of the three that is **not** the payload's own
- * fault, and it is coded apart from the other two for that reason. A descriptor
- * that is not an object, and one naming a location no release ever wrote at
- * this schema, condemn themselves: no upgrade and no configuration makes those
- * bytes readable, so a reader may write them off. A forward `schemaVersion`
+ * The newer schema is the one of the four that is **not** the payload's own
+ * fault, and it is coded apart from the others for that reason. A descriptor
+ * that is not an object, one naming a location no release ever wrote at this
+ * schema, and one missing what its location is read through — an `S3` one
+ * with no object key, an `INLINE` one with no bytes — condemn themselves: no
+ * upgrade and no configuration makes those bytes readable, so a reader may
+ * write them off. A forward `schemaVersion`
  * says the opposite — the payload is intact and the release that wrote it reads
  * it perfectly — so it is `FORMAT_UNSUPPORTED`, exactly as a forward `v` on the
  * row around it is, naming the attribute that carried the version. Sharing the
@@ -179,6 +181,14 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
     // The location is whatever the row holds, and the row is what this refuses.
     const location = truncateForLog(String(JSON.stringify(descriptor.location)));
     throw validationError(`payload descriptor has an unknown location ${location}`, 'descriptor');
+  }
+  // What each location needs to be read at all; a row can carry a descriptor
+  // that names a location and nothing else.
+  if (descriptor.location === PayloadLocation.S3 && typeof descriptor.s3Key !== 'string') {
+    throw validationError('payload descriptor is offloaded but names no object key', 'descriptor');
+  }
+  if (descriptor.location === PayloadLocation.INLINE && !ArrayBuffer.isView(descriptor.bytes)) {
+    throw validationError('payload descriptor is inline but carries no bytes', 'descriptor');
   }
 }
 

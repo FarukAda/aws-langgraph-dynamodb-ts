@@ -164,8 +164,23 @@ export function parseArgs(argv) {
  * `onRelease` is called once per released key, in listing order.
  */
 export function emptyJoin(onRelease) {
-  return { pages: 0, versions: 0, markers: 0, open: null, lastClosedKey: null, onRelease };
+  return {
+    pages: 0,
+    versions: 0,
+    markers: 0,
+    unversioned: 0,
+    open: null,
+    lastClosedKey: null,
+    onRelease,
+  };
 }
+
+/**
+ * The version id S3 gives an object written while its bucket had no
+ * versioning. A bucket that never had it lists every object under this id and
+ * no delete marker at all, so a sweep of it can find nothing.
+ */
+const NULL_VERSION_ID = 'null';
 
 /** One listing entry reduced to what the join needs. */
 function normalise(entry) {
@@ -265,6 +280,7 @@ export function addVersionsPage(join, page) {
   for (const version of page.Versions ?? []) {
     entries.push({ key: version.Key, kind: 'versions', entry: normalise(version) });
     join.versions += 1;
+    if (version.VersionId === NULL_VERSION_ID) join.unversioned += 1;
   }
   for (const marker of page.DeleteMarkers ?? []) {
     entries.push({ key: marker.Key, kind: 'markers', entry: normalise(marker) });
@@ -451,7 +467,14 @@ function classifyRow(row) {
   return { kind: 'unrecognised' };
 }
 
-/** Each `ListObjectVersions` page under `prefix`, handed to `onPage` in order. */
+/**
+ * Each `ListObjectVersions` page under `prefix`, handed to `onPage` in order.
+ *
+ * Throws when a page claims more pages (`IsTruncated: true`) but gives no
+ * `NextKeyMarker`: continuing would resend the same request with no marker,
+ * which S3 reads as "start over," turning a malformed response into a silent
+ * loop over the pages already read rather than a visible failure.
+ */
 async function eachListingPage(s3, { bucket, prefix }, onPage) {
   let keyMarker;
   let versionIdMarker;
@@ -466,6 +489,12 @@ async function eachListingPage(s3, { bucket, prefix }, onPage) {
     );
     await onPage(page);
     if (page.IsTruncated !== true) return;
+    if (page.NextKeyMarker === undefined) {
+      throw new Error(
+        'ListObjectVersions reported IsTruncated=true with no NextKeyMarker; refusing to restart ' +
+          'the listing from the beginning, which would repeat the pages already read forever',
+      );
+    }
     keyMarker = page.NextKeyMarker;
     versionIdMarker = page.NextVersionIdMarker;
   }
@@ -598,6 +627,7 @@ export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = D
     pages: 0,
     versions: 0,
     markers: 0,
+    unversioned: 0,
     releases: 0,
     expired: 0,
     checked: 0,
@@ -644,6 +674,7 @@ export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = D
   result.pages = join.pages;
   result.versions = join.versions;
   result.markers = join.markers;
+  result.unversioned = join.unversioned;
   return result;
 }
 
@@ -673,6 +704,18 @@ const REMEDIES = [
   'store item that was recreated after its object was released, it is not.',
 ];
 
+/**
+ * What a listing of nothing but "null" version ids and no delete marker means:
+ * the bucket is not versioned, a release there erased each object outright,
+ * and the empty report below is the sweep's blindness, not the table's health.
+ */
+const UNVERSIONED_HINT = [
+  'every listed version carries the id "null" and there is no delete marker: this bucket is',
+  'NOT versioned, so a release erased its object outright and left nothing this sweep can',
+  'find. Enable bucket versioning: the recovery window this sweep reports, and the lifecycle',
+  'rule that bounds it, exist only with it.',
+];
+
 /** The whole report: what was swept, what was found, and what to do with it. */
 export function reportLines(result) {
   const lines = [
@@ -684,6 +727,9 @@ export function reportLines(result) {
       `${result.expired} with no surviving payload version, ` +
       `${result.expiredRows} past their ttl and already hidden from every reader`,
   ];
+  if (result.versions > 0 && result.unversioned === result.versions && result.markers === 0) {
+    lines.push(...UNVERSIONED_HINT);
+  }
   for (const row of result.unreadable) {
     lines.push(
       `UNREADABLE objectKey=${row.key} payloadVersionId=${row.versionId} reason=${row.reason}`,

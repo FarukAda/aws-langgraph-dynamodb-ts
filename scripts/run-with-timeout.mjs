@@ -7,15 +7,20 @@
  * matters for `npm run test:surface`: it fuzzes the public surface through
  * roughly 200 AWS SDK client wrappers a run, and a heap that size has been
  * shown to trigger a Node 24/26 teardown defect after exit
- * (`Check failed: node->IsInUse()`, hang or crash while freeing it). A hang
- * there is a stall after every test already passed, which `--test-timeout`
- * cannot see and cannot stop. This is what actually bounds it: it watches the
- * whole child process from outside, and once the timeout elapses it kills the
- * child's entire process tree — not just the immediate child, since
- * `node --test` isolates each test file into its own child process, and a
- * kill that missed that grandchild would leave exactly the runaway process
- * this exists to stop. `npm run test:surface` can no longer run for hours
- * unattended; it always exits within the timeout it is given.
+ * (`Check failed: node->IsInUse()`, hang or crash while freeing it — on Node
+ * 24.21 the test child spins at 100 % CPU in its own teardown in about one
+ * run in three, with every test already passed). That is why the script
+ * passes `--test-force-exit`: the runner then ends the process the moment the
+ * tests are done, on the exit path that skips freeing the heap, and the hang
+ * does not arise. A hang there is a stall after every test already passed,
+ * which `--test-timeout` cannot see and cannot stop, so this wrapper stays as
+ * the backstop: it watches the whole child process from outside, and once the
+ * timeout elapses it kills the child's entire process tree — not just the
+ * immediate child, since `node --test` isolates each test file into its own
+ * child process, and a kill that missed that grandchild would leave exactly
+ * the runaway process this exists to stop. `npm run test:surface` can no
+ * longer run for hours unattended; it always exits within the timeout it is
+ * given.
  *
  * Usage: `node scripts/run-with-timeout.mjs <timeoutSeconds> -- <command> [args...]`
  */
@@ -33,6 +38,15 @@ import { isMain } from './is-main.mjs';
  * that proves the kill worked.
  */
 const KILL_GRACE_MS = 10_000;
+
+/**
+ * The signals that mean "stop now" to this wrapper and are passed on to the
+ * command's process tree before the wrapper itself exits. `SIGINT` is a
+ * Ctrl-C, `SIGTERM` what a parent's timeout or a CI runner sends, `SIGHUP` a
+ * closed terminal. Windows delivers a console Ctrl-C to every process on the
+ * console by itself and has no `SIGTERM`, so there the listeners are inert.
+ */
+const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
 /**
  * Run `command` with `args`, killing it — and its whole process tree — if it
@@ -70,6 +84,7 @@ export function runWithTimeout(command, args, timeoutMs, { env = process.env } =
       settled = true;
       clearTimeout(timer);
       clearTimeout(graceTimer);
+      for (const signal of FORWARDED_SIGNALS) process.off(signal, stopEarly);
       resolvePromise(result);
     };
 
@@ -112,6 +127,18 @@ export function runWithTimeout(command, args, timeoutMs, { env = process.env } =
       );
       kill();
     }, timeoutMs);
+
+    // The caller ending this wrapper early — Ctrl-C, a parent's own timeout —
+    // ends the command's whole tree with it. Left to the default, the signal
+    // would end only the wrapper, and the tree it was watching would run on
+    // with nothing left to stop it: the orphan this wrapper exists to prevent,
+    // made by the wrapper itself. The child's exit then settles this as a
+    // failure, since a command cut short did not succeed.
+    const stopEarly = () => {
+      timedOut = true;
+      kill();
+    };
+    for (const signal of FORWARDED_SIGNALS) process.on(signal, stopEarly);
 
     child.on('error', (error) => settle({ status: 1, timedOut, error }));
     child.on('exit', (code) => settle({ status: timedOut ? null : code, timedOut }));

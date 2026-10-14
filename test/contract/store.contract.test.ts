@@ -20,8 +20,10 @@ afterAll(async () => {
 
 describe('BaseStore contract conformance', () => {
   it('batch returns OperationResults in the documented shapes, in order', async () => {
-    const [putResult, getResult, searchResult, namespacesResult] = await store.batch([
-      { namespace: ['c', 'u1'], key: 'k', value: { v: 1 } },
+    // The put lands in a batch of its own: a batch answers its reads as it
+    // found things and applies its writes afterwards, as the reference does.
+    const [putResult] = await store.batch([{ namespace: ['c', 'u1'], key: 'k', value: { v: 1 } }]);
+    const [getResult, searchResult, namespacesResult] = await store.batch([
       { namespace: ['c', 'u1'], key: 'k' },
       { namespacePrefix: ['c', 'u1'] },
       { matchConditions: [{ matchType: 'prefix', path: ['c'] }], limit: 10, offset: 0 },

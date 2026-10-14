@@ -42,7 +42,7 @@ Writes DynamoDB acknowledged; they persist, since there is no rollback.
 
 ### unprocessed
 
-> `readonly` **unprocessed**: readonly `WriteRequest`[]
+> `readonly` **unprocessed**: readonly [`WriteRequest`](../type-aliases/WriteRequest.md)[]
 
 Defined in: [shared/errors/base-error.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L54)
 

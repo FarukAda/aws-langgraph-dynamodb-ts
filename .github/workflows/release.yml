@@ -134,18 +134,26 @@ jobs:
       # It runs from the checkout with the runner's own Node, before `npm ci`:
       # the script imports nothing outside the repository. It waits up to 45
       # minutes because the live tier starts on the same push as this job and
-      # runs its suites one at a time; a failure ends the wait at once.
+      # runs its suites one at a time; a failure ends the wait at once. A
+      # listing that could not be fetched — an API error, a rate limit — is
+      # one more wait, not a verdict: the loop asks again rather than judging
+      # an empty answer, and the script answers 2 to a listing it cannot read.
       - name: Wait for a fully successful CI run of this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           for _ in $(seq 1 90); do
-            status=0
-            CHECK_RUNS="$(gh api --paginate \
+            if ! CHECK_RUNS="$(gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
-              --jq '.check_runs[] | {id, name, status, conclusion}')" \
-              npm run --silent ci:require-green || status=$?
+              --jq '.check_runs[] | {id, name, status, conclusion}')"; then
+              echo "::warning::Could not list the check runs of ${GITHUB_SHA}; retrying in 30 s."
+              sleep 30
+              continue
+            fi
+            export CHECK_RUNS
+            status=0
+            npm run --silent ci:require-green || status=$?
             case "${status}" in
               0) exit 0 ;;
               2) sleep 30 ;;
@@ -165,7 +173,7 @@ jobs:
       #
       # No dependency cache: the release installs from the lockfile alone, not
       # from a cache another workflow run may have written.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
@@ -225,7 +233,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-artifacts
           path: |
@@ -260,12 +268,12 @@ jobs:
       # No checkout: publishing a tarball needs nothing from the repository,
       # and nothing here runs `npm ci`, so no third-party package executes in
       # the job that can mint a registry credential.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
 
@@ -323,7 +331,7 @@ jobs:
 
       # Handed to `github-release`, which attaches it. Uploaded before the
       # publish, like everything else that can fail here.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provenance
           path: provenance.intoto.jsonl
@@ -350,11 +358,11 @@ jobs:
       # `id-token`, so this job cannot mint a registry credential.
       contents: write
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: provenance
 
@@ -363,7 +371,9 @@ jobs:
       # fail on what the repository contains. `gh` is preinstalled on the
       # runner, so no action from outside GitHub runs with this token. A re-run
       # after a partial failure finds the release already there and updates it
-      # instead of failing to create it twice.
+      # instead of failing to create it twice; `--draft=false` on that edit
+      # publishes a release someone had saved as a draft for the tag, which an
+      # edit would otherwise leave unpublished.
       - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -373,7 +383,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           FILES=(sbom.runtime.cyclonedx.json sbom.build.cyclonedx.json provenance.intoto.jsonl)
           if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false \
               --notes-file release-body.md --prerelease="${PRERELEASE}"
             gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber "${FILES[@]}"
           else

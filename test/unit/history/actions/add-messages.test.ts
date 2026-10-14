@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage, RemoveMessage } from '@langchain/core/messages
 import { addMessages } from '../../../../src/history/actions/add-messages';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -69,6 +70,73 @@ describe('addMessages', () => {
     ).rejects.toThrow('upload failed');
     expect(deleteBatch).toHaveBeenCalledWith(['s1/U0']);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  /**
+   * An upload that failed after its attempts were spent may still have stored
+   * the object — a lost acknowledgement looks the same as a lost request — and
+   * nothing will ever name it. The failure carries the key it was writing to,
+   * so the cleanup takes that object along with the earlier messages'.
+   */
+  it("takes the failed upload's own object along with the earlier ones", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    let uploads = 0;
+    const deleteBatch = jest.fn().mockResolvedValue([]);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+      upload: (key: string) => {
+        uploads += 1;
+        if (uploads === 2) {
+          throw new DynamoDBLangGraphError('lost', ErrorCode.S3_OFFLOAD_FAILED, {
+            operation: 'upload',
+            key,
+          });
+        }
+        return key;
+      },
+      deleteBatch,
+    };
+    await expect(
+      addMessages(context(client, { offloader: offloader as never }), 's1', [
+        new HumanMessage('first'),
+        new HumanMessage('second'),
+      ]),
+    ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
+    expect(deleteBatch).toHaveBeenCalledWith(['s1/U0', 's1/U1']);
+  });
+
+  /**
+   * Only an upload that named the key it was writing to adds that key: a
+   * failure from another operation, or one carrying no key, adds nothing,
+   * since there is no object it could be naming.
+   */
+  it("adds no key for a failure that is not an upload's, or that names none", async () => {
+    for (const context_ of [{ operation: 'download', key: 's1/U1' }, { operation: 'upload' }]) {
+      const { client } = createStrictDocumentMock();
+      const deleteBatch = jest.fn().mockResolvedValue([]);
+      let uploads = 0;
+      const offloader = {
+        shouldOffload: () => true,
+        buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+        upload: (key: string) => {
+          uploads += 1;
+          if (uploads === 2) {
+            throw new DynamoDBLangGraphError('lost', ErrorCode.S3_OFFLOAD_FAILED, context_);
+          }
+          return key;
+        },
+        deleteBatch,
+      };
+      await expect(
+        addMessages(context(client, { offloader: offloader as never }), 's1', [
+          new HumanMessage('first'),
+          new HumanMessage('second'),
+        ]),
+      ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
+      expect(deleteBatch).toHaveBeenCalledWith(['s1/U0']);
+    }
   });
 
   it('rethrows an encode failure untouched when no offloader is configured', async () => {

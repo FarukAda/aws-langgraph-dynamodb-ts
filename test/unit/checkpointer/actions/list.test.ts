@@ -54,6 +54,34 @@ describe('listCheckpoints', () => {
     );
     expect(tuples).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'list: skipped a row that is not a checkpoint meta item',
+      expect.anything(),
+    );
+  });
+
+  /**
+   * A listing that names one checkpoint reads it with the same GetItem a
+   * `getTuple` does; the line it logs for a foreign row still says which
+   * operation met it, since that is what an operator alerting on the message
+   * reads.
+   */
+  it('names the listing, not getTuple, when the one row it addresses is foreign', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: { PK: 'CHKPT#t', SK: 'META##x', value: { location: 'INLINE' } },
+    });
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+    const tuples = await collect(
+      listCheckpoints(ctx, {
+        configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'x' },
+      }),
+    );
+    expect(tuples).toEqual([]);
+    expect(warn).toHaveBeenCalledWith('list: skipped a row that is not a checkpoint meta item', {
+      sortKey: 'META##x',
+    });
   });
 
   async function fixtures(client: CheckpointerContext['client']) {

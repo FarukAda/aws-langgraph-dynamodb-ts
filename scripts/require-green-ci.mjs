@@ -21,7 +21,12 @@
  * Exit codes are the interface, because the caller loops on them:
  *   0 — every required check is present and successful. Publish.
  *   1 — a required check completed and did not succeed. Stop; waiting cannot help.
- *   2 — not there yet. Sleep and call again.
+ *   2 — not there yet, or the listing could not be read. Sleep and call again.
+ *
+ * An unreadable listing — an error body, a truncated page, a rate-limit
+ * notice in place of the check runs — is a 2 and not a crash: the loop only
+ * ever sleeps on 2, and the next call usually reads fine. Crashing would exit
+ * 1, which the loop takes as a verdict and abandons the release on.
  */
 import { readFileSync } from 'node:fs';
 
@@ -132,9 +137,14 @@ export function evaluate(checkRuns, required = REQUIRED_CHECKS) {
 // The entry point. `scripts/` is outside the coverage scope, so this is not
 // instrumented; the exported functions above are what the tests exercise.
 if (isMain(import.meta.url)) {
-  const { failed, pending, satisfied, total } = evaluate(
-    parseCheckRuns(process.env.CHECK_RUNS ?? ''),
-  );
+  let checkRuns;
+  try {
+    checkRuns = parseCheckRuns(process.env.CHECK_RUNS ?? '');
+  } catch (error) {
+    console.log(`::warning::The check-run listing could not be read (${error.message}); retrying.`);
+    process.exit(2);
+  }
+  const { failed, pending, satisfied, total } = evaluate(checkRuns);
 
   if (failed.length > 0) {
     for (const run of failed) console.error(`  ${run.name}: ${run.conclusion}`);

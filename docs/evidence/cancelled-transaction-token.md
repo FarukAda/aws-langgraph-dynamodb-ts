@@ -111,9 +111,9 @@ left it.
 reserved for the whole idempotency window: presenting the same token with a
 changed request body is refused rather than evaluated. This is what makes a
 compare-and-swap re-pin need a **fresh** token after a cancellation —
-`IdempotentParameterMismatchException` is not in this package's retryable-error
-list and is handled nowhere, so reusing the spent token would surface a raw SDK
-error to a caller.
+`IdempotentParameterMismatchException` is classified as `AWS_REJECTED` and is
+not retried, so reusing the spent token would fail the caller's write with
+that error instead of re-evaluating it.
 
 **What the probe did not cover.** A change to the token's *other* request fields
 (table name, key attributes) rather than the item body — only the body was varied,

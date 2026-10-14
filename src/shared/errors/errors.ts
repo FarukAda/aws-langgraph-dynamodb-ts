@@ -98,13 +98,37 @@ export function conflictError(
 }
 
 /**
- * Non-enumerable carrier, on a `RETRY_EXHAUSTED` error, of whether *some*
- * attempt of the spent budget — not only the last, which `cause` alone
- * reports — left DynamoDB free to apply it later. Read only by
+ * Non-enumerable carrier, on the error a retry budget ends with, of whether
+ * *some* attempt of that budget — not only the last, which the error itself
+ * reports — left DynamoDB free to apply it later. Set by
+ * {@link retryExhaustedError} on a spent budget and by {@link markMayStillLand}
+ * on a refusal that ended one early; read only by
  * {@link retryBudgetMayStillLand}; never enumerable, so it never reaches a log
  * or a JSON serialization the way `context` and `details` are meant to.
  */
-const MAY_STILL_LAND = Symbol('retryExhaustedError.mayStillLand');
+const MAY_STILL_LAND = Symbol('retryBudget.mayStillLand');
+
+/**
+ * Record on `error` that an attempt of the budget it ended may still land.
+ *
+ * Accepts: `error` — the failure a retry budget is about to throw as it is: a
+ * refusal that is not retried, so it is thrown bare rather than wrapped in
+ * `RETRY_EXHAUSTED`, after an earlier attempt of the same budget got no
+ * answer. Credentials expiring mid-budget are the ordinary way there.
+ *
+ * Returns: `error`, carrying the record for {@link retryBudgetMayStillLand}.
+ * An error that cannot take a property — frozen, or not an object — is
+ * returned as it is, and then reads as answered, which is how every error
+ * read before this record existed.
+ *
+ * Throws: nothing, for any value.
+ */
+export function markMayStillLand<E extends Error>(error: E): E {
+  if (typeof error === 'object' && error !== null && Object.isExtensible(error)) {
+    Object.defineProperty(error, MAY_STILL_LAND, { value: true, enumerable: false });
+  }
+  return error;
+}
 
 /**
  * The error for a retried operation that exhausted its attempt budget.
@@ -146,16 +170,15 @@ export function retryExhaustedError(
 }
 
 /**
- * Whether some attempt of a spent retry budget — recorded by
- * {@link retryExhaustedError} across every attempt `withRetry` made, not
- * re-derived from `cause`, which is only the last one — left DynamoDB free to
- * apply it later.
+ * Whether some attempt of the retry budget this error ended — recorded across
+ * every attempt `withRetry` made, not re-derived from the error, which is only
+ * the last one — left DynamoDB free to apply it later.
  *
- * Accepts: `error` — any error; only one `retryExhaustedError` built carries
- * the record.
+ * Accepts: `error` — any error; one {@link retryExhaustedError} built, or one
+ * {@link markMayStillLand} marked, carries the record.
  *
- * Returns: the flag recorded when the error was built; false for any other
- * error, including a `RETRY_EXHAUSTED` error built without passing one.
+ * Returns: the flag recorded on the error; false for any other error,
+ * including a `RETRY_EXHAUSTED` error built without passing one.
  *
  * Throws: nothing, for any value.
  */

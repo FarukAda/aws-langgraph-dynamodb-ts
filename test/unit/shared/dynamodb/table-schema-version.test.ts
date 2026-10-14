@@ -1,9 +1,7 @@
 import {
   assertReadableRow,
-  ROW_FORMAT_VERSION,
   rowVersionOf,
   SUPPORTED_ROW_FORMAT_VERSION,
-  withRowVersion,
 } from '../../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
@@ -48,15 +46,5 @@ describe('assertReadableRow', () => {
       expect((error as Error).message).toMatch(/store item/);
       expect((error as Error).message).toMatch(/upgrade/);
     }
-  });
-});
-
-describe('withRowVersion', () => {
-  it('stamps the current version without disturbing the item', () => {
-    expect(withRowVersion({ PK: 'p', SK: 's' })).toEqual({
-      PK: 'p',
-      SK: 's',
-      v: ROW_FORMAT_VERSION,
-    });
   });
 });

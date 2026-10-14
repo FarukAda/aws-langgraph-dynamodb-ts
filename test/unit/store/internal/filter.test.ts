@@ -116,7 +116,34 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter({ score: NaN }, { score: { $ne: NaN } })).toBe(false);
   });
 
-  it('keeps ordering ordinary same-typed pairs (F3 regression guard)', () => {
+  /**
+   * The reference compares two numbers with `===`, under which `0` and `-0`
+   * are one number. `JSON.stringify(-0)` is `"0"`, so a stored `-0` reads back
+   * as `0` anyway; the filter side can still carry a `-0` a computation left.
+   */
+  it('treats 0 and -0 as the same number, as the reference does', () => {
+    expect(matchesStoreFilter({ n: 0 }, { n: -0 })).toBe(true);
+    expect(matchesStoreFilter({ n: 0 }, { n: { $eq: -0 } })).toBe(true);
+    expect(matchesStoreFilter({ n: 0 }, { n: { $in: [-0] } })).toBe(true);
+    expect(matchesStoreFilter({ n: 0 }, { n: { $ne: -0 } })).toBe(false);
+    expect(matchesStoreFilter({ n: 0 }, { n: { $nin: [-0] } })).toBe(false);
+  });
+
+  /**
+   * `$ne` and `$nin` hold for a field the item does not have, as `undefined !==
+   * value` does upstream; the other operators compare nothing against an
+   * absent field and so never match.
+   */
+  it('matches an absent field under $ne and $nin only', () => {
+    expect(matchesStoreFilter({ other: 1 }, { n: { $ne: 5 } })).toBe(true);
+    expect(matchesStoreFilter({ other: 1 }, { n: { $nin: [5] } })).toBe(true);
+    expect(matchesStoreFilter({ other: 1 }, { n: { $eq: 5 } })).toBe(false);
+    expect(matchesStoreFilter({ other: 1 }, { n: { $in: [5] } })).toBe(false);
+    expect(matchesStoreFilter({ other: 1 }, { n: { $gt: 0 } })).toBe(false);
+    expect(matchesStoreFilter({ other: 1 }, { n: 5 })).toBe(false);
+  });
+
+  it('still orders ordinary same-typed pairs after the like-types rule', () => {
     expect(matchesStoreFilter({ n: 5 }, { n: { $gt: 4 } })).toBe(true);
     expect(matchesStoreFilter({ n: 5 }, { n: { $lt: 4 } })).toBe(false);
     expect(matchesStoreFilter({ n: 5 }, { n: { $gte: 5 } })).toBe(true);

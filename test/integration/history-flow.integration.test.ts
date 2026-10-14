@@ -90,7 +90,11 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const ttls = new Set((result.Items ?? []).map((item) => item.ttl));
     expect(result.Items).toHaveLength(8);
     expect(ttls.size).toBe(1);
-    expect([...ttls][0]).toBeGreaterThan(0);
+    // The anchor is the configured 3600 s from the session's creation, in
+    // epoch seconds — not milliseconds, and not a value that merely exists.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    expect([...ttls][0]).toBeGreaterThan(nowSeconds + 3600 - 60);
+    expect([...ttls][0]).toBeLessThanOrEqual(nowSeconds + 3600);
   });
 
   it('honours ClientRequestToken so a re-sent commit does not double-count', async () => {

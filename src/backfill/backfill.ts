@@ -15,6 +15,8 @@ import type { AttributeMap, DynamoDBDocumentLike } from '../shared/dynamodb/clie
 import { isConditionalCheckFailed } from '../shared/dynamodb/idempotent-write.js';
 import {
   DEFAULT_INDEX_SHARDS,
+  INDEX_PARTITION_ATTRIBUTE,
+  INDEX_SORT_ATTRIBUTE,
   type IndexKeys,
   indexKeys,
   type IndexTarget,
@@ -93,7 +95,10 @@ async function writeIndexKeys(
           TableName: options.tableName,
           Key: rowKeyOf(row),
           UpdateExpression: 'SET #gpk = :gpk, #gsk = :gsk',
-          ExpressionAttributeNames: { '#gpk': 'gsi1pk', '#gsk': 'gsi1sk' },
+          ExpressionAttributeNames: {
+            '#gpk': INDEX_PARTITION_ATTRIBUTE,
+            '#gsk': INDEX_SORT_ATTRIBUTE,
+          },
           ExpressionAttributeValues: { ':gpk': keys.gsi1pk, ':gsk': keys.gsi1sk },
           // Two clauses, and both are load-bearing.
           //
@@ -134,7 +139,7 @@ async function backfillPage(
           ExclusiveStartKey: startKey,
           // Rows that already carry keys are not read into memory at all.
           FilterExpression: 'attribute_not_exists(#gpk)',
-          ExpressionAttributeNames: { '#gpk': 'gsi1pk' },
+          ExpressionAttributeNames: { '#gpk': INDEX_PARTITION_ATTRIBUTE },
         },
         request,
       ),
@@ -445,7 +450,7 @@ function assertPositiveBound(value: number | undefined, field: string, max?: num
  * rest optional; each, when given, follows the same rule an adapter's own
  * option of the same name does. `tableName` reuses the adapters' own
  * `tableName` validator outright; `indexShards` is held to the adapters'
- * shard cap, `MAX_INDEX_SHARDS`; and `retry` shares its numeric bounds with
+ * shard cap of 1024; and `retry` shares its numeric bounds with
  * the adapters' own `retry` validator while accepting the wider surface
  * backfill's `RetryOptions` needs, so a mismatch between backfill and the
  * adapters it feeds cannot drift in on what a bound means.

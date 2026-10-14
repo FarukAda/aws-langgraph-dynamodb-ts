@@ -4,9 +4,10 @@
  * A delta channel stores a full value only every `snapshotFrequency` updates,
  * so its value at a checkpoint is its last snapshot plus the writes since,
  * collected by walking parent pointers. The walk, the order the writes are
- * collected in, and the one read that tells an expired ancestor (a hole to
- * report) from one that never existed (the history's true start) are decided
- * here.
+ * collected in, and what a pointer the walk cannot follow means — a hole to
+ * report, whether its row is still stored past its ttl or already swept, and
+ * never the history's true start, which is a checkpoint with no pointer at all
+ * — are decided here.
  */
 
 import type { RunnableConfig } from '@langchain/core/runnables';
@@ -35,23 +36,29 @@ import type { CheckpointerContext } from './setup.js';
  */
 type ChannelSeed = DeltaChannelHistory['seed'];
 
-/** What one walk accumulates: what is still wanted, and what has been found. */
+/** What one walk accumulates: what is still wanted, what has been found, and where it has been. */
 interface Walk {
   remaining: Set<string>;
   writes: Record<string, CheckpointPendingWrite[]>;
   seeds: Record<string, ChannelSeed>;
+  /** The checkpoints read so far, as `<ns>#<id>`, so a chain that loops is caught on its first lap. */
+  visited: Set<string>;
 }
 
 /** An empty accumulator wanting every channel named. */
 function startWalk(channels: string[]): Walk {
   const writes: Record<string, CheckpointPendingWrite[]> = {};
   for (const channel of channels) writes[channel] = [];
-  return { remaining: new Set(channels), writes, seeds: {} };
+  return { remaining: new Set(channels), writes, seeds: {}, visited: new Set() };
 }
 
 /**
  * Collect one ancestor's pending writes for the channels still being walked,
- * newest task first within the ancestor, matching the reference walk.
+ * in the order the read established — the reference's `writesSortKey`: task
+ * path, then task id, then index, which only the read can establish, since a
+ * pending-write tuple carries no path — pushed last-first so the final
+ * reversal in {@link deltaChannelHistory} restores it, matching the reference
+ * walk.
  */
 function collectWrites(tuple: CheckpointTuple, walk: Walk): void {
   const perChannel: Record<string, CheckpointPendingWrite[]> = {};
@@ -61,7 +68,6 @@ function collectWrites(tuple: CheckpointTuple, walk: Walk): void {
   }
   for (const channel of Object.keys(perChannel)) {
     const block = perChannel[channel];
-    block.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
     for (let i = block.length - 1; i >= 0; i -= 1) walk.writes[channel].push(block[i]);
   }
 }
@@ -106,10 +112,16 @@ function cursorFor(
  * chain ends, feeding each ancestor to {@link collectWrites} and
  * {@link takeSeeds}.
  *
- * An ancestor that cannot be read ends the walk — quietly when it was never
- * written or the cursor names no checkpoint, both ordinary ends of a chain, and
- * with {@link ancestorExpired} when the row is still stored but past its ttl,
- * which is a hole in the thread.
+ * The chain ends quietly only where there is no pointer to follow: the cursor
+ * is `undefined`, or names no checkpoint. A pointer the walk cannot follow is a
+ * hole in the thread and raises {@link ancestorExpired} — whether the row it
+ * names is still stored but past its ttl, or already removed by DynamoDB's
+ * sweep (which is what every such pointer becomes within days of expiry): a
+ * parent pointer always names a checkpoint that was stored, since LangGraph
+ * chains each put after its parent's, so "no row" is never a thread's true
+ * start. A pointer back to a checkpoint already read is the same hole: the
+ * chain can supply nothing further, and the inherited walk would follow it
+ * forever, one billed read per lap.
  *
  * `from.signal` cancels every hop, not just the first. The chain is unbounded
  * in principle — a delta channel rebuilds from the nearest ancestor that stored
@@ -127,16 +139,34 @@ async function walkAncestors(
 ): Promise<void> {
   let cursor = cursorFor(from.start, from.signal);
   while (cursor !== undefined && walk.remaining.size > 0) {
+    const revisit = revisitOf(cursor, walk);
+    if (revisit !== undefined) throw ancestorExpired(revisit, [...walk.remaining]);
     const tuple = await getTuple(cursor);
     if (tuple === undefined) {
       const stop = await probeAncestor(context, cursor);
-      if (stop?.expired) throw ancestorExpired(stop, [...walk.remaining]);
-      return;
+      if (stop === undefined) return;
+      throw ancestorExpired(stop, [...walk.remaining]);
     }
     collectWrites(tuple, walk);
     takeSeeds(tuple, walk);
     cursor = cursorFor(tuple.parentConfig, from.signal);
   }
+}
+
+/**
+ * The stop a cursor is, when it names a checkpoint this walk has already read;
+ * `undefined` for a checkpoint not yet seen, which is then recorded. A cursor
+ * naming no checkpoint is recorded as nothing and is never a revisit.
+ */
+function revisitOf(cursor: RunnableConfig, walk: Walk): WalkStop | undefined {
+  const ids = cursor.configurable as CheckpointConfigurable | undefined;
+  const threadId: string | undefined = ids?.thread_id;
+  const checkpointId: string | undefined = ids?.checkpoint_id;
+  if (typeof threadId !== 'string' || typeof checkpointId !== 'string') return undefined;
+  const key = `${ids?.checkpoint_ns ?? ''}#${checkpointId}`;
+  if (walk.visited.has(key)) return { threadId, checkpointId, stop: 'revisited' };
+  walk.visited.add(key);
+  return undefined;
 }
 
 /** Shape one channel's accumulated writes and seed into its public history. */
@@ -172,12 +202,14 @@ function historyOf(walk: Walk, channel: string): DeltaChannelHistory {
  * consumer's cue to start from its initial value — correctly, because there is
  * nothing to lose.
  *
- * Throws: `ANCESTOR_EXPIRED` when an ancestor a channel still needs exists but
- * has expired ({@link ancestorExpired}). An ancestor that was never written
- * still ends the walk quietly — that is an ordinary root. `ABORTED` when the
- * signal fires, at whichever hop it fires on, and in preference to a diagnosis
- * of the stop: a walk cancelled just as it reached an expired ancestor reports
- * the cancel, since the caller stopped waiting for the answer either way.
+ * Throws: `ANCESTOR_EXPIRED` when a channel still needs an ancestor the walk
+ * cannot read — its row stored but past its ttl, or already removed by the
+ * sweep — or when the chain points back to a checkpoint already read
+ * ({@link ancestorExpired}). A checkpoint with no parent pointer ends the walk
+ * quietly — that is a thread's true start. `ABORTED` when the signal fires,
+ * at whichever hop it fires on, and in preference to a diagnosis of the stop:
+ * a walk cancelled just as it reached an expired ancestor reports the cancel,
+ * since the caller stopped waiting for the answer either way.
  *
  * Guarantees: the walk stops at the first ancestor that answers for every
  * channel, so a deep thread costs reads only as far back as the nearest
@@ -202,26 +234,30 @@ export async function deltaChannelHistory(
   return result;
 }
 
-/** Where an ancestor walk stopped, and whether that stop is a hole in the thread. */
+/** Where an ancestor walk stopped, and what kind of hole in the thread it found there. */
 export interface WalkStop {
   threadId: string;
   checkpointId: string;
-  /** True when the row is still stored but past its `ttl`, rather than never written. */
-  expired: boolean;
+  /**
+   * `'expired'` — the row is still stored, past its `ttl`; `'gone'` — no row at
+   * all, the sweep having removed it (or something else having deleted it);
+   * `'revisited'` — the chain pointed back to a checkpoint already read.
+   */
+  stop: 'expired' | 'gone' | 'revisited';
 }
 
 /**
  * Read the META row an ancestor walk could not follow, **ignoring expiry**, to
- * tell "this checkpoint was never written" apart from "it expired out from
- * under its own descendants".
+ * tell "this checkpoint is still stored but has expired" apart from "it is
+ * gone" — the sweep has removed it, which every expired row becomes within
+ * days. Both are holes; the read decides only what the error says.
  *
  * Every other read in this package hides an expired row, which is the right
  * rule for a reader asking for state: checkpoint META, store and history rows
  * by their own ttl, and a checkpoint's PAYLOAD and pending-WRITE rows by their
  * checkpoint's META row, which is the only one checked (a pre-v4 checkpoint's
  * migration is the exception: it reads its parent's pending writes under the
- * child's META row). Here the distinction is the whole point: one is an
- * ordinary root, the other is data loss.
+ * child's META row). Here the row is wanted expired or not.
  *
  * Accepts: `config` — the parent pointer a walk stopped at. `config.signal` —
  * cancels the read, and is read before it is sent. The walk re-attaches the
@@ -229,7 +265,7 @@ export interface WalkStop {
  * place every other reader in this package takes it, rather than from a
  * parameter of its own.
  *
- * Returns: whether that checkpoint exists and whether it has expired, or
+ * Returns: whether that checkpoint is still stored and expired, or gone, or
  * `undefined` when the config names no thread or no checkpoint — such a pointer
  * addresses nothing that could have expired, so the walk has simply run out of
  * chain.
@@ -243,8 +279,7 @@ export interface WalkStop {
  * package hides an expired row by the rule above — META, store and history rows
  * by their own ttl, PAYLOAD and WRITE rows by their checkpoint's META row, with
  * the pre-v4 migration the exception — which is right for a reader asking for
- * state; here the distinction is the whole point, because one answer is an
- * ordinary root and the other is data loss.
+ * state; here an expired row is the evidence the error names.
  */
 export async function probeAncestor(
   context: CheckpointerContext,
@@ -271,16 +306,16 @@ export async function probeAncestor(
   return {
     threadId,
     checkpointId,
-    expired: row !== undefined && isExpiredRow(row, nowSeconds()),
+    stop: row !== undefined && isExpiredRow(row, nowSeconds()) ? 'expired' : 'gone',
   };
 }
 
 /**
  * The error a read raises when a delta channel's history has a hole in it.
  *
- * Accepts: `stop` — the expired ancestor the walk reached. `channels` — the
- * delta channels that still needed it, named in the message so the operator
- * knows what was lost.
+ * Accepts: `stop` — the ancestor the walk could not follow, and why. `channels`
+ * — the delta channels that still needed it, named in the message so the
+ * operator knows what was lost.
  *
  * Returns: the error, coded `ANCESTOR_EXPIRED` and carrying the thread and
  * checkpoint. The message bounds all three: after the first hop the walk's
@@ -301,9 +336,15 @@ export function ancestorExpired(stop: WalkStop, channels: string[]): DynamoDBLan
   const named = truncateLabelsForLog(channels)
     .map((channel) => `"${channel}"`)
     .join(', ');
+  const what =
+    stop.stop === 'expired'
+      ? 'has expired'
+      : stop.stop === 'gone'
+        ? 'is gone (expired and removed by DynamoDB, or deleted)'
+        : 'is named as its own ancestor, so the chain never reaches a stored value';
   return new DynamoDBLangGraphError(
     `checkpoint "${truncateForLog(stop.checkpointId)}" of thread ` +
-      `"${truncateForLog(stop.threadId)}" has expired, but later ` +
+      `"${truncateForLog(stop.threadId)}" ${what}, but later ` +
       `checkpoints still need it to reconstruct ${named}. ` +
       'A delta channel writes a full snapshot only every `snapshotFrequency` updates and leaves ' +
       'itself out of the checkpoints in between, so its value is rebuilt from an earlier ' +

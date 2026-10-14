@@ -1,3 +1,4 @@
+import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
@@ -16,10 +17,16 @@ import type * as Api from '../../src/index';
 import type {
   AdapterSection,
   AdapterWindow,
+  AnyDynamoDBLangGraphError,
   BackfillOptions,
+  BackfillResult,
   BaseAdapterOptions,
+  BatchDrainDetails,
+  BatchPassDetails,
+  BatchWriteIncompleteDetails,
   CancelOptions,
   CodecOptions,
+  CompensationFailedDetails,
   CompressionConfig,
   CorruptMessagePolicy,
   CreateAllOptions,
@@ -35,6 +42,8 @@ import type {
   DynamoDBStore,
   DynamoDBStoreOptions,
   ErrorContext,
+  ErrorDetailsByCode,
+  ErrorDetailsFor,
   FactoryBaseOptions,
   GetMessagesOptions,
   ListNamespacesOptions,
@@ -62,6 +71,7 @@ import type {
   VectorReconcileResult,
   VectorRef,
   VectorScoreDirection,
+  WriteRequest,
 } from '../../src/index';
 import { createStrictDocumentMock } from '../shared/helpers/ddb-mock';
 
@@ -117,7 +127,44 @@ describe('public type exports', () => {
      * takes no `logger`.
      */
     expectTypeOf<BackfillOptions['retry']>().toEqualTypeOf<RetryOptions | undefined>();
+    expectTypeOf<BackfillResult>().toEqualTypeOf<{
+      scanned: number;
+      indexed: number;
+      skipped: number;
+      nextCursor?: string;
+    }>();
     expectTypeOf<BaseAdapterOptions['tableName']>().toEqualTypeOf<string>();
+    /**
+     * The details a `BATCH_WRITE_INCOMPLETE` carries are one of two shapes,
+     * told apart by `kind`; a `COMPENSATION_FAILED` carries the rollback's
+     * own failure; every other code carries none, and the lookup types say
+     * so, which is what lets a `catch` narrow on `code` and read `details`.
+     */
+    expectTypeOf<BatchWriteIncompleteDetails>().toEqualTypeOf<
+      BatchDrainDetails | BatchPassDetails
+    >();
+    expectTypeOf<BatchDrainDetails['kind']>().toEqualTypeOf<'drain'>();
+    /** What `details.unprocessed` carries, named so a caller can type what it re-submits. */
+    expectTypeOf<BatchDrainDetails['unprocessed'][number]>().toEqualTypeOf<WriteRequest>();
+    expectTypeOf<WriteRequest>().toEqualTypeOf<
+      | { PutRequest: { Item: Record<string, NativeAttributeValue> } }
+      | { DeleteRequest: { Key: Record<string, NativeAttributeValue> } }
+    >();
+    expectTypeOf<BatchPassDetails['kind']>().toEqualTypeOf<'pass'>();
+    expectTypeOf<BatchPassDetails['unit']>().toEqualTypeOf<'chunk' | 'row'>();
+    expectTypeOf<CompensationFailedDetails['rollbackError']>().toEqualTypeOf<Error>();
+    expectTypeOf<
+      ErrorDetailsByCode[api.ErrorCode.BATCH_WRITE_INCOMPLETE]
+    >().toEqualTypeOf<BatchWriteIncompleteDetails>();
+    expectTypeOf<
+      ErrorDetailsFor<api.ErrorCode.COMPENSATION_FAILED>
+    >().toEqualTypeOf<CompensationFailedDetails>();
+    expectTypeOf<ErrorDetailsFor<api.ErrorCode.VALIDATION>>().toEqualTypeOf<undefined>();
+    /** The union `isDynamoDBLangGraphError` narrows to: one member per code, discriminated by `code`. */
+    expectTypeOf<AnyDynamoDBLangGraphError['code']>().toEqualTypeOf<api.ErrorCode>();
+    expectTypeOf<
+      Extract<AnyDynamoDBLangGraphError, { code: api.ErrorCode.COMPENSATION_FAILED }>['details']
+    >().toEqualTypeOf<CompensationFailedDetails>();
     expectTypeOf<CancelOptions['signal']>().toEqualTypeOf<AbortSignal | undefined>();
     expectTypeOf<CodecOptions>().toHaveProperty('compression');
     expectTypeOf<CodecOptions>().toHaveProperty('s3');

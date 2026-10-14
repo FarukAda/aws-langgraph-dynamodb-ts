@@ -221,6 +221,7 @@ async function fuzzSaver() {
   const wcfg = { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'cp1' } };
   for (const v of [undefined, null, 'x', {}, [], [null], [[]], [['ch']], [[123, 1]], [['a#b', 1]], [['ch', undefined]], [[Symbol('s'), 1]], [['', 1]], [['ch', 1, 'extra']]]) await tryAsync(E + '.putWrites', `writes=${describe(v)}`, () => saver.putWrites(wcfg, v, 'task1'));
   for (const v of IDS) await tryAsync(E + '.putWrites', `taskId=${describe(v)}`, () => saver.putWrites(wcfg, [['ch', 1]], v));
+  for (const v of [undefined, null, 123, '', '~pull, node', {}, ['a']]) await tryAsync(E + '.putWrites', `taskPath=${describe(v)}`, () => saver.putWrites(wcfg, [['ch', 1]], 'task1', v));
   await tryAsync(E + '.putWrites', 'no checkpoint_id', () => saver.putWrites(okCfg, [['ch', 1]], 'task1'));
   await tryAsync(E + '.putWrites', 'writes=[] (empty)', () => saver.putWrites(wcfg, [], 'task1'));
   for (const v of [null, 'x', 1, { limit: 0 }, { limit: -1 }, { limit: 1.5 }, { limit: NaN }, { limit: '5' }, { limit: 1e12 }, { limit: Infinity }, { before: 'x' }, { before: {} }, { before: { configurable: { checkpoint_id: 'a#b' } } }, { before: { configurable: { checkpoint_id: 123 } } }, { filter: 'x' }, { filter: null }, { filter: [] }, { filter: { a: { $gt: 1 } } }, { foo: 1 }]) await tryIter(E + '.list', `options=${describe(v)}`, () => saver.list({ configurable: { thread_id: 't' } }, v));

@@ -304,6 +304,72 @@ describe('shared adapter defaults', () => {
     all.destroy();
   });
 
+  /**
+   * A section's own `s3` replaces the base one whole, so the region the base
+   * `s3` had been given never reached it: the same section resolved the region
+   * off its `clientConfig` through `createStore`, and got none through
+   * `createAll`, whose adapters are handed the shared client instead.
+   */
+  it("gives a section's own s3 the DynamoDB region, as createStore does", async () => {
+    const seen: object[] = [];
+    lifecycleBucket(s3Mock, { Rules: [] });
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
+    const factory = new DynamoDBFactory({
+      clientConfig: { region: 'eu-central-1' },
+      createClient: fakeClientFactory().create,
+      logger,
+      ttl: { days: 30 },
+    });
+    const own = () => ({
+      bucketName: 'own',
+      createS3Client: (config: object) => {
+        seen.push(config);
+        return new S3Client({ region: 'us-east-1' });
+      },
+    });
+
+    const store = factory.createStore({ tableName: 'store', s3: own() });
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
+    expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
+
+    const all = factory.createAll({ store: { tableName: 'store', s3: own() } });
+    await fastLifecyclePoll(() => all.store.ensureS3LifecycleRule());
+    expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
+    expect(logger.warn).not.toHaveBeenCalled();
+    all.destroy();
+  });
+
+  it("leaves the region a section's own s3 names as it is", async () => {
+    const seen: object[] = [];
+    lifecycleBucket(s3Mock, { Rules: [] });
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
+    const factory = new DynamoDBFactory({
+      clientConfig: { region: 'eu-central-1' },
+      createClient: fakeClientFactory().create,
+      logger,
+      ttl: { days: 30 },
+    });
+    const all = factory.createAll({
+      store: {
+        tableName: 'store',
+        s3: {
+          bucketName: 'own',
+          clientConfig: { region: 'ap-southeast-2' },
+          createS3Client: (config: object) => {
+            seen.push(config);
+            return new S3Client({ region: 'us-east-1' });
+          },
+        },
+      },
+    });
+    await fastLifecyclePoll(() => all.store.ensureS3LifecycleRule());
+    expect(seen.pop()).toMatchObject({ region: 'ap-southeast-2' });
+    expect(logger.warn).not.toHaveBeenCalled();
+    all.destroy();
+  });
+
   it('propagates shared ttl and s3 to every adapter, a per-adapter ttl winning', async () => {
     const { client } = createStrictDocumentMock();
     lifecycleBucket(s3Mock, { Rules: [] });
@@ -350,6 +416,36 @@ describe('shared adapter defaults', () => {
     expect(lifecycleDays(['checkpointer'])).toEqual([32]);
     expect(logger.warn).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A section assembled from optional settings names a key and leaves its
+   * value `undefined`, which is "not configured" everywhere in this package.
+   * Spread over the defaults it would take them away: a `client: undefined`
+   * replaced the shared client with one the adapter built from nothing, and a
+   * `ttl: undefined` dropped the factory's expiry silently.
+   */
+  it('treats a per-adapter key given as undefined as not given', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
+    const factory = new DynamoDBFactory({ client, logger, ttl: { days: 30 }, s3: s3() });
+
+    const store = factory.createStore({ tableName: 'store', client: undefined, ttl: undefined });
+    const all = factory.createAll({ saver: { tableName: 'ckpt', ttl: undefined, s3: undefined } });
+    await new Promise((resolve) => setImmediate(resolve));
+    logger.warn.mockClear();
+
+    await store.get(['ns'], 'k');
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
+    await fastLifecyclePoll(() => all.saver.ensureS3LifecycleRule());
+    expect(lifecycleDays(['store', 'checkpointer'])).toEqual([32, 32]);
+    expect(logger.warn).not.toHaveBeenCalled();
+    all.destroy();
+    store.destroy();
   });
 
   it('propagates shared compression to the store', async () => {

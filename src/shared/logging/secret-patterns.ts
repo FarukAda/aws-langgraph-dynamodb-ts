@@ -37,6 +37,7 @@ export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
   'bearer',
   'token',
   'privatekey',
+  'secretkey',
 ];
 
 /**
@@ -63,15 +64,23 @@ export function normaliseKey(key: string): string {
  *
  * The credential-pair pattern (last) tolerates a **closing quote after the
  * keyword**, because that is what `JSON.stringify` produces
- * (`{"password":"…"}`) and requiring the separator to follow the bare keyword
- * matched nothing at all there — a silent, complete bypass on the single most
- * common shape a downstream HTTP error arrives in. Its group 1 is the keyword
- * and separator, preserved by {@link redactText}.
+ * (`{"password":"…"}`), and a backslash before that quote, because a JSON body
+ * quoted inside another JSON string — the shape a logged HTTP error carries —
+ * reads `{\"password\":\"…\"}`; requiring the separator to follow the bare
+ * keyword would match nothing in either, a silent, complete bypass on the
+ * most common shapes a downstream error arrives in. Its keywords include the
+ * hyphenated and spaced spellings of an API key (`x-api-key`, `api key`), a
+ * secret key and a client secret. Its group 1 is the keyword and separator,
+ * preserved by {@link redactText}.
  *
- * Its value side tries three shapes, and their order is load-bearing:
+ * Its value side tries four shapes, and their order is load-bearing:
  * 1. a fully-quoted span that consumes escapes, so `{"password":"a\"b"}` is
  *    redacted whole. Ending the span at the escaped quote stopped the
  *    redaction short and printed the rest of the secret verbatim.
+ * 1b. a span quoted with escaped quotes, `\"…\"`, the doubly encoded form of
+ *    the first; it ends at the next quote, so a quote inside such a secret
+ *    leaves its tail in the clear, and the sibling fields after it stay
+ *    intact where the line-end fallback would take them too.
  * 2. an unquoted JSON scalar — number, `true`, `false`, `null` — required to
  *    end at a real delimiter — `,`, `}`, `]` or end of input, optionally
  *    preceded by whitespace. Without this alternative,
@@ -101,7 +110,7 @@ export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /\beyJ(?:[A-Za-z0-9_]|-(?!eyJ))+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
-  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=\s*[,}\]]|\s*$)|[^\r\n]+)/gi,
+  /((?:aws_)?(?:secret_access_key|secretaccesskey|secret_?key|client_?secret|password|passwd|api[-_ ]?key|token)(?:\\?["'])?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\\"[^"\r\n]*\\"|\\'[^'\r\n]*\\'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=\s*[,}\]]|\s*$)|[^\r\n]+)/gi,
 ];
 
 /**
@@ -275,16 +284,48 @@ export interface RedactedErrorText {
  * for truncation. A consumer who wants a bound has their own transport to put
  * one in.
  *
- * Throws: **nothing**, for any value.
+ * Throws: **nothing**, for any value: a `name` or `stack` that cannot be read
+ * — a getter of the consumer's own that throws, a `name` whose `toString`
+ * throws — is reported as `[unreadable name]` or `[unreadable stack]`, since
+ * the one thing this must not do on the way to the consumer's transport is
+ * fail.
  */
 export function redactErrorText(error: Error, patterns: readonly RegExp[]): RedactedErrorText {
   const described = toError(error);
+  const rawName = nameOf(described);
+  const rawStack = stackOf(described);
+  const name = redactText(rawName, patterns);
   const message = redactText(described.message, patterns);
-  const stack = described.stack === undefined ? undefined : redactText(described.stack, patterns);
+  const stack = rawStack === undefined ? undefined : redactText(rawStack, patterns);
   return {
-    name: described.name,
+    name,
     message,
     stack,
-    changed: message !== described.message || stack !== described.stack,
+    changed: name !== rawName || message !== described.message || stack !== rawStack,
   };
+}
+
+/**
+ * An Error's `name` as text. It is a string by convention only, and a
+ * subclass can put anything behind it, a throwing getter or a value whose
+ * own `toString` throws included: one that cannot be read as text reads as
+ * `[unreadable name]`, because a redactor that throws is worse than one that
+ * says what it could not see.
+ */
+function nameOf(error: Error): string {
+  try {
+    return String(error.name);
+  } catch {
+    return '[unreadable name]';
+  }
+}
+
+/** An Error's `stack` as text, `undefined` when it has none, and `[unreadable stack]` when it cannot be read; see {@link nameOf}. */
+function stackOf(error: Error): string | undefined {
+  try {
+    const { stack } = error;
+    return stack === undefined ? undefined : String(stack);
+  } catch {
+    return '[unreadable stack]';
+  }
 }

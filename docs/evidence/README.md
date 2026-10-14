@@ -21,10 +21,13 @@ the suite before relying on one of these claims in a decision that matters.
 
 ## Run conditions
 
-Every probe below was issued against the raw SDK, never through this package, so
-nothing in `src/` could colour the answer, and with `maxAttempts: 1` so the SDK's
-own retries could not mask a response. Each run created its own DynamoDB table or
-S3 bucket and deleted it afterward.
+Every probe below but one was issued against the raw SDK, never through this
+package, so nothing in `src/` could colour the answer, and with `maxAttempts: 1`
+so the SDK's own retries could not mask a response. The exception is E-6, whose
+whole question is what this package's own default retry budget does under
+contention, so it was sent through the package's idempotent-write helper on
+purpose. Each run created its own DynamoDB table or S3 bucket and deleted it
+afterward.
 
 Every run below used the same AWS account, so no difference between them is
 explained by account-level quota or configuration. The account is not named here:

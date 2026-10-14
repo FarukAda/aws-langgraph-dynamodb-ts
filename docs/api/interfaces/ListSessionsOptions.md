@@ -35,7 +35,7 @@ refused rather than answered with the first page again.
 Defined in: [history/types.ts:83](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L83)
 
 How many sessions to return, newest-updated first; an integer from 0 to
-`MAX_PAGE_LIMIT` (10,000).
+10,000.
 
 With a configured `indexName` it is the page size and defaults to 100.
 Without one the read is a table scan that cannot be paged: an explicit
@@ -69,9 +69,16 @@ Cap on scan pages before `RESULT_TRUNCATED` (default 1000). Scan path only.
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/options.ts:101](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L101)
+Defined in: [shared/options.ts:110](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L110)
 
-Aborting it rejects the call with an `ABORTED` error at the next wait.
+Aborting it rejects the call with an `ABORTED` error — carrying the abort
+reason as `cause` — whether the signal was already aborted (nothing is
+sent), aborts while the call waits between requests, or aborts while a
+request is in flight: the signal reaches the AWS SDK on every DynamoDB
+request and S3 transfer the call makes for you, so the request itself
+ends. The verification reads and the cleanup that follow a failure run to
+completion regardless. A value that is not `AbortSignal`-shaped is refused
+with `VALIDATION` naming `signal` before anything is sent.
 
 #### Inherited from
 

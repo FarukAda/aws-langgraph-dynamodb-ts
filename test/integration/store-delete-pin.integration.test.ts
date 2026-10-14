@@ -238,7 +238,7 @@ describe('a write landing between the read and the delete', () => {
   });
 });
 
-describe('a delete of a key with no row (D1 in miniature)', () => {
+describe('a delete of a key with no row: the smallest case of the pre-read closing the race', () => {
   /**
    * The cheapest possible proof that the short-circuit is a closure and not a
    * cost saving: no acknowledgement is lost, no S3 object is involved, and an

@@ -78,6 +78,28 @@ describe('S3Offloader', () => {
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
   });
 
+  /** The encryption the adapter was configured with is what every object is written under. */
+  it('upload encrypts with AES256 by default, and with the configured KMS key when one is named', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const { offloader } = makeOffloader();
+    await offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
+    const byDefault = s3Mock.commandCalls(PutObjectCommand)[0].args[0].input;
+    expect(byDefault.ServerSideEncryption).toBe('AES256');
+    expect(byDefault).not.toHaveProperty('SSEKMSKeyId');
+
+    const kms = new S3Offloader({
+      bucketName: 'b',
+      serverSideEncryption: 'aws:kms',
+      sseKmsKeyId: 'arn:aws:kms:eu-west-1:123456789012:key/k1',
+      createS3Client: () => new S3Client({ region: 'us-east-1' }),
+    });
+    await kms.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
+    expect(s3Mock.commandCalls(PutObjectCommand)[1].args[0].input).toMatchObject({
+      ServerSideEncryption: 'aws:kms',
+      SSEKMSKeyId: 'arn:aws:kms:eu-west-1:123456789012:key/k1',
+    });
+  });
+
   /**
    * The write is conditional, so it cannot overwrite an object that is already
    * there. It needs only `s3:PutObject` — the `If-Match` variant would also

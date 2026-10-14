@@ -20,6 +20,7 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
 import { parsedPut } from '../../../shared/helpers/parsed-inputs';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -83,7 +84,7 @@ describe('putItem', () => {
     expect(item.PK).toBe('STORE#users');
     expect(item.SK).toBe('u1#profile');
     expect(item.createdAt).toBe(item.updatedAt);
-    expect(item.embedding).toBeUndefined();
+    expect(item.embeddings).toBeUndefined();
   });
 
   it('preserves createdAt across updates', async () => {
@@ -94,6 +95,33 @@ describe('putItem', () => {
     const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
     expect(item.createdAt).toBe('2000-01-01T00:00:00.000Z');
     expect(item.updatedAt).not.toBe(item.createdAt);
+  });
+
+  /** A live row this adapter did not write may carry no `createdAt`; the put then stamps its own. */
+  it('stamps its own createdAt over a live row that carries none', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { rev: 'r0' } });
+    mock.on(PutCommand).resolves({});
+    await putItem(context(client), parsedPut(op({})));
+    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
+    expect(item.createdAt).toBe(item.updatedAt);
+  });
+
+  /**
+   * A row past its `ttl` is, to every reader, no item — `get` answers null and
+   * a search leaves it out — until DynamoDB's sweep removes it, which can lag
+   * for days. A put over one is therefore a creation, not an update: it must
+   * not inherit a creation time from an item that no longer exists.
+   */
+  it('starts createdAt afresh over a row that has expired but not yet been swept', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: { createdAt: '2000-01-01T00:00:00.000Z', ttl: FROZEN_NOW_MS / 1000 - 1 },
+    });
+    mock.on(PutCommand).resolves({});
+    await putItem(context(client), parsedPut(op({})));
+    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
+    expect(item.createdAt).toBe(item.updatedAt);
   });
 
   it('deletes when value is null', async () => {
@@ -141,7 +169,7 @@ describe('putItem', () => {
       parsedPut(op({ index: false })),
     );
     expect(embeddings.embedDocuments).not.toHaveBeenCalled();
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embeddings).toBeUndefined();
   });
 
   it('uses a per-item index field override', async () => {
@@ -212,7 +240,7 @@ describe('putItem', () => {
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
-  it('reads createdAt and the previous value descriptor in a single GetItem call', async () => {
+  it('reads createdAt, ttl and the previous value descriptor in a single GetItem call', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({
       Item: {
@@ -229,7 +257,8 @@ describe('putItem', () => {
     await putItem(context(client), parsedPut(op({})));
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     const read = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(read.ProjectionExpression).toBe('#c, #r, #v.#loc, #v.#s3k');
+    expect(read.ConsistentRead).toBe(true);
+    expect(read.ProjectionExpression).toBe('#c, #r, #ttl, #v.#loc, #v.#s3k');
     expect(read.ExpressionAttributeNames).toMatchObject({ '#loc': 'location', '#s3k': 's3Key' });
   });
 

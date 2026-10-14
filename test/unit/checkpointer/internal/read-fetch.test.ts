@@ -68,6 +68,16 @@ describe('fetchTargetMeta', () => {
     expect(input.Limit).toBe(1);
     expect(input.ScanIndexForward).toBe(false);
     expect(input.ConsistentRead).toBe(true);
+    // The namespace's own META rows, separator-terminated: `META##` for the
+    // root, so a namespace named `#x…` could never be read as the root's.
+    expect(input.KeyConditionExpression).toBe('#pk = :pk AND begins_with(#sk, :skPrefix)');
+    expect(input.ExpressionAttributeValues).toMatchObject({
+      ':pk': 'CHKPT#t',
+      ':skPrefix': 'META##',
+    });
+    // Expired rows are filtered whatever this saver's own ttl setting is: a
+    // row another deployment stamped is just as gone to this reader.
+    expect(input.FilterExpression).toBe('attribute_not_exists(#ttl) OR #ttl > :now');
   });
 
   it('returns undefined when the newest query is empty', async () => {
@@ -117,6 +127,72 @@ describe('fetchPendingWrites', () => {
       ['task-1', 'ch', 'v1'],
     ]);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+
+  /**
+   * The query returns the rows in sort-key order — task id first — and the
+   * fetch reorders them by task path first, as the reference reads them.
+   */
+  it('returns the writes in writesSortKey order, not in the order the query returned them', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const first = await writeItems(
+      context(client),
+      't',
+      '',
+      'c1',
+      'task-a',
+      [['ch', 'a']],
+      'n1',
+      undefined,
+      undefined,
+      '~pull, 02',
+    );
+    const second = await writeItems(
+      context(client),
+      't',
+      '',
+      'c1',
+      'task-b',
+      [['ch', 'b']],
+      'n2',
+      undefined,
+      undefined,
+      '~pull, 01',
+    );
+    mock.on(QueryCommand).resolves({ Items: [...first, ...second] });
+    const pending = await fetchPendingWrites(context(client), {
+      threadId: 't',
+      checkpointNs: '',
+      checkpointId: 'c1',
+    });
+    expect(pending).toEqual([
+      ['task-b', 'ch', 'b'],
+      ['task-a', 'ch', 'a'],
+    ]);
+  });
+
+  /**
+   * A row under a checkpoint's `WRITE#` prefix that lacks the task id or
+   * channel this adapter writes was not written by it. Handed on as it is, it
+   * reached LangGraph as `[undefined, undefined, value]`; it is parsed at the
+   * read, as a META row is, and left out with a warn naming its sort key.
+   */
+  it('skips a row under the WRITE# prefix that is not a pending write, and warns', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const [real] = await writeItems(context(client), 't', '', 'c1', 'task-1', [['ch', 'v0']], 'n');
+    const { taskId: _taskId, ...forged } = real;
+    mock.on(QueryCommand).resolves({
+      Items: [{ ...forged, SK: 'WRITE##c1#forged#0000000008#ch' }, real],
+    });
+    const warn = jest.fn();
+    const pending = await fetchPendingWrites(
+      { ...context(client), logger: { ...SILENT_LOGGER, warn } },
+      { threadId: 't', checkpointNs: '', checkpointId: 'c1' },
+    );
+    expect(pending).toEqual([['task-1', 'ch', 'v0']]);
+    expect(warn).toHaveBeenCalledWith('getTuple: skipped a row that is not a pending-write item', {
+      sortKey: 'WRITE##c1#forged#0000000008#ch',
+    });
   });
 });
 

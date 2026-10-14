@@ -129,26 +129,34 @@ function namespaceSource(context: StoreContext, op: ParsedList, now: number) {
  */
 const NAMESPACE_COLLATOR = new Intl.Collator('en');
 
+/** The separator the reference joins a namespace's labels with before collating them. */
+const REFERENCE_JOIN = ':';
+
 /**
  * Order two namespaces by the reference store's collation, pinned, with its
  * ties settled.
  *
- * The collation is {@link NAMESPACE_COLLATOR} on the joined namespace — the
- * comparison `InMemoryStore` makes, held to one locale. Collation calls some
- * *distinct* strings equal — `'café'` written precomposed and decomposed is
- * one such pair — and the reference then leaves their order to insertion
- * order. Here that would be the order DynamoDB happened to return the rows in,
- * so the same listing could place a page boundary between them differently on
- * two calls and a page could skip one namespace while repeating another. The
- * tie-break settles exactly those pairs and never reorders a pair the
- * collation itself orders.
+ * The collation is {@link NAMESPACE_COLLATOR} on the labels joined with
+ * {@link REFERENCE_JOIN} — the comparison `InMemoryStore` makes, held to one
+ * locale. The join character matters: `.`, `@`, `/` and `!` collate on
+ * different sides of `:` and `#`, so a label holding one would land on a
+ * different page joined any other way. Collation calls some *distinct* strings
+ * equal — `'café'` written precomposed and decomposed is one such pair — and
+ * the reference then leaves their order to insertion order. Here that would be
+ * the order DynamoDB happened to return the rows in, so the same listing could
+ * place a page boundary between them differently on two calls and a page could
+ * skip one namespace while repeating another. The tie-break settles exactly
+ * those pairs, on the key-separator join, which no label can contain and so
+ * tells any two namespaces apart, and never reorders a pair the collation
+ * itself orders.
  */
 function compareNamespaces(a: string[], b: string[]): number {
+  const collated = NAMESPACE_COLLATOR.compare(a.join(REFERENCE_JOIN), b.join(REFERENCE_JOIN));
+  if (collated !== 0) return collated;
   const left = a.join(KEY_SEPARATOR);
   const right = b.join(KEY_SEPARATOR);
-  const collated = NAMESPACE_COLLATOR.compare(left, right);
   // `Number(left > right)` keeps the comparator total: 0 for a pair that really is equal.
-  return collated !== 0 ? collated : left < right ? -1 : Number(left > right);
+  return left < right ? -1 : Number(left > right);
 }
 
 /**

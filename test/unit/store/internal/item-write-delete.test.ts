@@ -114,6 +114,9 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
       ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
     });
     expect(h.released()).toEqual(['users/u1/profile.bin']);
+    // The pin is only as good as the read it came from: a replica's row could
+    // name a revision a newer put has already replaced.
+    expect(h.mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
 
   /**

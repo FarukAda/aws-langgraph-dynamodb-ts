@@ -80,13 +80,17 @@ describe('DynamoDBStore end-to-end against real DynamoDB', () => {
     expect(filtered.map((item) => item.key).sort()).toEqual(['b', 'c']);
   });
 
+  /**
+   * The winner is written last and sorts last by key, so neither insertion
+   * order nor the key order an unranked read answers in could put it first.
+   */
   it('ranks semantic search deterministically with the fake embeddings', async () => {
-    await store.put(['memories', 'u9'], 'cats', { text: 'the cat sat on the mat' });
-    await store.put(['memories', 'u9'], 'finance', { text: 'quarterly revenue report' });
+    await store.put(['memories', 'u9'], 'a-finance', { text: 'quarterly revenue report' });
+    await store.put(['memories', 'u9'], 'z-cats', { text: 'the cat sat on the mat' });
 
     const results = await store.search(['memories', 'u9'], { query: 'the cat sat on the mat' });
-    expect(results[0].key).toBe('cats');
-    expect(results[0].score).toBeGreaterThanOrEqual(results[1].score ?? 0);
+    expect(results.map((item) => item.key)).toEqual(['z-cats', 'a-finance']);
+    expect(results[0].score).toBeGreaterThan(results[1].score ?? 0);
   });
 
   it('lists distinct namespaces under a prefix root', async () => {

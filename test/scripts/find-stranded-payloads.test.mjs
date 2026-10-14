@@ -596,6 +596,32 @@ test('the sweep paginates, carrying the key and version markers it was handed', 
   );
 });
 
+test('the sweep refuses a page that claims more pages but gives no key marker, rather than looping forever', async () => {
+  // If the IsTruncated-without-marker guard ever regressed, a fake that keeps
+  // resolving the same page would make this test hang instead of fail: the
+  // loop would never yield anything to reject on. Rejecting the second
+  // ListObjectVersions call turns that regression into a fast failure instead.
+  let calls = 0;
+  const s3 = {
+    send(command) {
+      if (command.constructor.name === 'ListObjectVersionsCommand') {
+        calls += 1;
+        if (calls > 1) {
+          return Promise.reject(
+            new Error('eachListingPage looped past the malformed page instead of refusing it'),
+          );
+        }
+        return Promise.resolve({ Versions: [], DeleteMarkers: [], IsTruncated: true });
+      }
+      return Promise.reject(new Error(`unexpected ${command.constructor.name}`));
+    },
+  };
+  await assert.rejects(
+    sweep({ s3, ddb: fakeDynamo(), bucket: 'bkt', table: 'tbl', prefix: 'p/', graceDays: 1 }),
+    /NextKeyMarker/,
+  );
+});
+
 test('the report names both remedies and repairs neither', async () => {
   const { result } = await runSweep();
   const text = reportLines(result).join('\n');
@@ -612,6 +638,39 @@ test('a sweep that finds nothing still reports what it swept', async () => {
   assert.deepEqual(result.stranded, []);
   assert.match(reportLines(result).join('\n'), /bkt/);
   assert.equal(ddb.sent.length, 0);
+});
+
+/**
+ * A bucket without versioning lists every object under the version id "null"
+ * and no delete marker ever: a release there erases the object outright, so
+ * the sweep has nothing to join and an empty report would read as a clean
+ * bill of health. The report says what the listing proves instead.
+ */
+test('a report over an unversioned bucket says the sweep cannot see releases there', async () => {
+  const nullVersions = ['p/a.bin', 'p/b.bin'].map((Key) => ({
+    Key,
+    VersionId: 'null',
+    IsLatest: true,
+    LastModified: '2026-09-01T00:00:00Z',
+  }));
+  const s3 = fakeS3({ pages: [{ Versions: nullVersions }] });
+  const result = await sweep({
+    s3,
+    ddb: fakeDynamo(),
+    bucket: 'bkt',
+    table: 'tbl',
+    prefix: 'p/',
+    graceDays: 1,
+  });
+  assert.equal(result.unversioned, 2);
+  const text = reportLines(result).join('\n');
+  assert.match(text, /not versioned/i);
+  assert.match(text, /enable (bucket )?versioning/i);
+});
+
+test('a report over a versioned bucket carries no versioning hint', async () => {
+  const { result } = await runSweep();
+  assert.doesNotMatch(reportLines(result).join('\n'), /not versioned/i);
 });
 
 test('isExpiredRow reads a row past its ttl as gone, as every read of this package does', () => {

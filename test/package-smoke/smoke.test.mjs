@@ -29,6 +29,21 @@ const RUNTIME_DEPS = Object.entries(manifest.peerDependencies)
 const TYPECHECK_DEPS = ['@types/node'];
 
 /**
+ * How long one command may run (10 minutes; an install from the registry is
+ * the slow one). It is a bound on each command rather than on the test: a
+ * `node:test` timeout is a timer, and a timer cannot fire while a synchronous
+ * `execSync` holds the event loop, so the test-level timeout a synchronous
+ * body declares never goes off. A stalled registry now fails the step that was
+ * waiting on it, naming the command, instead of being cut off by the job.
+ */
+const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** `execSync`, bounded by {@link COMMAND_TIMEOUT_MS}. */
+function run(command, options) {
+  return execSync(command, { ...options, timeout: COMMAND_TIMEOUT_MS });
+}
+
+/**
  * The compilers the shipped declarations are checked against: the floor the
  * README's "Versioning and compatibility" section promises consumers, and the
  * newest release. Installing an unpinned `typescript` checked only whatever was
@@ -86,16 +101,29 @@ function reachableDeclarations(entry) {
   return [...seen];
 }
 
-/** The tsc diagnostics that point at this package or at the optional peer. */
+/**
+ * The tsc diagnostics that point at this package or at the optional peer.
+ *
+ * A compiler that failed without a single diagnostic — `npx` that could not
+ * find it, a timeout that killed it — is not a compiler that found nothing
+ * wrong, so that case throws rather than answering an empty list that would
+ * pass the assertion exactly when the check did not run.
+ */
 function ourTypeErrors(dir) {
   const command =
     'npx tsc --noEmit --strict --skipLibCheck false --module nodenext --moduleResolution nodenext ' +
     '--target es2022 --types node consumer.cts consumer.mts';
   try {
-    execSync(command, { cwd: dir, stdio: 'pipe' });
+    run(command, { cwd: dir, stdio: 'pipe' });
     return [];
   } catch (error) {
-    const output = error.stdout ? error.stdout.toString() : '';
+    const output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    if (!/error TS\d+/.test(output)) {
+      throw new Error(
+        `tsc failed without reporting a diagnostic, so nothing was proved (${error.message}):\n${output}`,
+        { cause: error },
+      );
+    }
     return output
       .split(/\r?\n/)
       .filter((line) => /aws-langgraph-dynamodb-ts[\\/]dist|client-s3|^consumer\.[cm]ts/.test(line));
@@ -195,27 +223,27 @@ const offloading = new DynamoDBStore({
 });
 `;
 
-test('packs, installs the tarball, and imports the published surface', { timeout: 600000 }, () => {
+test('packs, installs the tarball, and imports the published surface', () => {
   const root = process.cwd();
-  execSync('npm run build', { cwd: root, stdio: 'ignore' });
-  const tarball = execSync('npm pack --silent', { cwd: root }).toString().trim().split(/\s+/).pop();
+  run('npm run build', { cwd: root, stdio: 'ignore' });
+  const tarball = run('npm pack --silent', { cwd: root }).toString().trim().split(/\s+/).pop();
   const tarballPath = join(root, tarball);
   const dir = mkdtempSync(join(tmpdir(), 'lg-ddb-smoke-'));
   try {
-    execSync('npm init -y', { cwd: dir, stdio: 'ignore' });
-    execSync(
+    run('npm init -y', { cwd: dir, stdio: 'ignore' });
+    run(
       `npm install "${tarballPath}" ${RUNTIME_DEPS.join(' ')} ${TYPECHECK_DEPS.join(' ')}`,
       { cwd: dir, stdio: 'ignore' },
     );
     writeFileSync(join(dir, 'run.mjs'), SMOKE);
-    const output = execSync('node run.mjs', { cwd: dir }).toString();
+    const output = run('node run.mjs', { cwd: dir }).toString();
     assert.match(output, /SMOKE_OK/);
     writeFileSync(join(dir, 'run.cjs'), SMOKE_CJS);
-    assert.match(execSync('node run.cjs', { cwd: dir }).toString(), /SMOKE_CJS_OK/);
+    assert.match(run('node run.cjs', { cwd: dir }).toString(), /SMOKE_CJS_OK/);
     writeFileSync(join(dir, 'consumer.cts'), CONSUMER);
     writeFileSync(join(dir, 'consumer.mts'), CONSUMER);
     for (const compiler of TYPECHECK_COMPILERS) {
-      execSync(`npm install "${compiler}"`, { cwd: dir, stdio: 'ignore' });
+      run(`npm install "${compiler}"`, { cwd: dir, stdio: 'ignore' });
       assert.deepEqual(ourTypeErrors(dir), [], `shipped declarations fail under ${compiler}`);
     }
   } finally {
@@ -224,8 +252,8 @@ test('packs, installs the tarball, and imports the published surface', { timeout
   }
 });
 
-test('the shipped declarations reachable from either index.d.ts never import the optional S3 peer', { timeout: 600000 }, () => {
-  execSync('npm run build', { cwd: process.cwd(), stdio: 'ignore' });
+test('the shipped declarations reachable from either index.d.ts never import the optional S3 peer', () => {
+  run('npm run build', { cwd: process.cwd(), stdio: 'ignore' });
   const entries = ['dist/esm/index.d.ts', 'dist/cjs/index.d.ts'].map((entry) => resolve(entry));
   const offenders = entries.flatMap((entry) => reachableDeclarations(entry)).filter((file) =>
     ts

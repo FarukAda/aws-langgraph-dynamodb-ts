@@ -71,6 +71,7 @@ async function* listOne(
       checkpointId: scope.checkpointId,
     },
     scope.signal,
+    'list',
   );
   if (!meta) return;
   const tuple = await tupleFor(context, meta, scope);
@@ -133,9 +134,12 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * package's page ceiling; `0` yields nothing, which is what the reference
  * returns, and a negative value is refused.
  *
- * Returns: an async generator over the tuples, newest first within a namespace,
- * unordered across threads on the scan path. The read stops right after the
- * yield that reaches `limit`, and abandoning the generator stops it too.
+ * Returns: an async generator over the tuples. With a `thread_id`, newest
+ * first within each namespace; without one, newest first across threads
+ * through the recency index, and on the scan path in the table's own order —
+ * oldest first within a thread, as DynamoDB stores an item collection, and
+ * threads in no particular order. The read stops right after the yield that
+ * reaches `limit`, and abandoning the generator stops it too.
  *
  * Throws: `VALIDATION`, from the first `.next()` and before any read, for
  * a config of the wrong shape (`config`, `configurable`, `signal`), a

@@ -118,10 +118,10 @@ export class DynamoDBStore extends BaseStore {
    * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
    * `listNamespaces` through the public {@link batch} reported all four as
    * `store.batch` and left an operator counting AWS failures by
-   * `context.operation` unable to tell them apart. The operations one run
+   * `context.operation` unable to tell them apart. The operations one phase
    * keeps in flight together share `this.context.readConcurrency`, the call's
-   * one decode budget, so a run of several concurrent searches never multiplies
-   * it (see {@link runBatch}).
+   * one decode budget, so a phase of several concurrent searches never
+   * multiplies it (see {@link runBatch}).
    */
   private async execute(operations: readonly ParsedOperation[]): Promise<SingleResult[]> {
     return runBatch(
@@ -135,8 +135,8 @@ export class DynamoDBStore extends BaseStore {
    * Execute a batch of operations and return their results in operation
    * order.
    *
-   * Accepts: `operations` — an array of operation objects, in the order they
-   * are to be observed; an empty batch does nothing and returns `[]`. Every
+   * Accepts: `operations` — an array of operation objects; an empty batch
+   * does nothing and returns `[]`. Every
    * operation is checked before any of them runs. A put carrying a `null`
    * value deletes its item. `get`, `put`, `delete` and `listNamespaces` check
    * their own call by the same rules and run the same dispatch, as upstream's
@@ -167,12 +167,14 @@ export class DynamoDBStore extends BaseStore {
    * `maxScanItems` or `maxIterations`. One failing operation rejects the
    * whole batch.
    *
-   * Guarantees: the order the caller wrote is the order the caller observes — a
-   * get after a put of the same item sees it, a get before one does not, and a
-   * search sees every write that precedes it and none that follow. Operations
-   * addressing different items run concurrently, so a batch of ten gets costs
-   * about one round trip rather than ten, sharing one `readConcurrency`
-   * decode budget between them rather than each holding a full one.
+   * Guarantees: the batch is evaluated as the reference store evaluates one —
+   * every get, search and listing is answered as the batch found things, and
+   * the puts and deletes land afterwards, one per item, the last one written
+   * winning — so two tasks of one superstep that touch one item get the same
+   * answers whichever was enqueued first. The reads run concurrently, then the
+   * writes, so a batch of ten gets costs about one round trip rather than ten,
+   * sharing one `readConcurrency` decode budget between them rather than each
+   * holding a full one.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic(
@@ -243,10 +245,12 @@ export class DynamoDBStore extends BaseStore {
    * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
    * `sortKey`, `value` or `index`; `payload` for a value too large to store
    * inline without `s3`, or, once offloaded, larger than
-   * `s3.maxDownloadBytes`; `VALIDATION` again, naming `index` or `value`, for
-   * the built row over DynamoDB's 400 KB item limit — `index` when its inline
-   * vectors are what pushed it over — checked before anything is written; a
-   * classified AWS failure; `RETRY_EXHAUSTED`.
+   * `s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+   * cap; `VALIDATION` again, naming `index` or `value`, for the built row over
+   * DynamoDB's 400 KB item limit — `index` when its inline vectors are what
+   * pushed it over — checked before anything is written; `S3_OFFLOAD_FAILED`
+   * when an offloaded payload cannot be uploaded; a classified AWS failure;
+   * `RETRY_EXHAUSTED`.
    */
   override async put(
     namespace: string[],
@@ -307,7 +311,7 @@ export class DynamoDBStore extends BaseStore {
    *
    * Accepts: `options.prefix`/`suffix` — labels a namespace can hold, where
    * `'*'` matches any one label. `options.maxDepth` — at least 1.
-   * `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+   * `options.limit` — an integer from 0 to 10,000, defaulting
    * to 100, where `0` returns an empty listing without reading the table.
    * `options.offset` — a non-negative integer, defaulting to 0.
    *
@@ -339,7 +343,7 @@ export class DynamoDBStore extends BaseStore {
    * whole table. `options.query` —
    * absent or empty ranks nothing. `options.filter` — metadata equality on the
    * item's value. `options.offset` — a non-negative integer, defaulting to 0.
-   * `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+   * `options.limit` — an integer from 0 to 10,000, defaulting
    * to 10, where `0` returns an empty page without a read or an embedding.
    * `options.signal` — aborts the reads.
    *
@@ -383,7 +387,8 @@ export class DynamoDBStore extends BaseStore {
    * `namespacePrefix`. A maintenance tool; see the action of the same name.
    *
    * Accepts: `namespacePrefix` — a non-empty namespace. `options.signal` —
-   * aborts between pages.
+   * ends the read or download in flight and any wait between them; vectors
+   * already upserted or pruned stay so.
    *
    * Returns: how many vectors were upserted and how many pruned.
    *

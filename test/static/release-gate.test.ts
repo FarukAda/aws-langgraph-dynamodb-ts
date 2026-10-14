@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
 import {
   ciCheckNames,
   jobBodies,
@@ -181,5 +184,30 @@ describe('the release refuses what it cannot vouch for', () => {
     expect(text).toMatch(/\bgh release create\b[^\n]*--verify-tag/);
     expect(text).toMatch(/\bgh release edit\b/);
     expect(text).toContain('provenance.intoto.jsonl');
+  });
+});
+
+/**
+ * The release body is the CHANGELOG section of the version being released,
+ * and `verify` refuses a version with no section or one GitHub cannot hold.
+ * That refusal arrives after the tag was pushed. This asks the same question
+ * of the version `package.json` names now, so a bump made with the heading
+ * still `[Unreleased]`, or a section grown past the limit, fails `npm test`
+ * on the maintainer's machine instead of the release on the runner.
+ */
+describe('the CHANGELOG can serve as the release body of the version package.json names', () => {
+  const version = (JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }).version;
+  const section = spawnSync(process.execPath, ['scripts/changelog-section.mjs', version], {
+    encoding: 'utf8',
+    timeout: 20_000,
+  });
+
+  it(`has a non-empty section for ${version}`, () => {
+    expect(section.status).toBe(0);
+    expect(section.stdout.trim().length).toBeGreaterThan(0);
+  });
+
+  it('keeps that section within the 125,000 characters a GitHub release body may hold', () => {
+    expect([...section.stdout].length).toBeLessThanOrEqual(125_000);
   });
 });

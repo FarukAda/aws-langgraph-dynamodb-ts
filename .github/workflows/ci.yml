@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -69,7 +69,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -96,7 +96,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -125,7 +125,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -179,8 +179,10 @@ jobs:
       matrix:
         # Prove the checkpoint contract holds across the supported
         # @langchain/langgraph-checkpoint range: the declared floor (the
-        # peerDependencies range's lower bound) and the newest release.
-        langgraph: ['1.1.5', 'latest']
+        # peerDependencies range's lower bound, read from package.json by
+        # scripts/peer-floors.mjs at run time, so the leg's name never carries
+        # a version) and the newest release.
+        langgraph: ['floor', 'latest']
     services:
       dynamodb-local:
         image: amazon/dynamodb-local:3.3.1
@@ -193,7 +195,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -201,8 +203,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Both legs write what they test into package.json as exact
+      # devDependencies for this run only and restore the manifest and the
+      # lockfile afterwards, so npm resolves one tree, strictly. A --no-save
+      # install would judge the new checkpoint package against the suite the
+      # lockfile still holds before replacing that suite, and refuse the pair.
+      # The floor leg installs the floor the peer range declares, beside the
+      # validation suite the lockfile holds, whose own range has to admit it;
+      # the `latest` leg installs the newest suite beside the newest
+      # checkpoint package, so a test the suite adds for a new contract —
+      # 1.2.0's `writesSortKey` order, say — runs here on every push.
       - name: Pin the checkpoint package under test
-        run: npm install --no-save @langchain/langgraph-checkpoint@${{ matrix.langgraph }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.langgraph }}" = "latest" ]; then
+            npm install --save-dev --save-exact @langchain/langgraph-checkpoint@latest @langchain/langgraph-checkpoint-validation@latest
+          else
+            floor="$(npm run --silent peer-floors | grep '^@langchain/langgraph-checkpoint@' || true)"
+            if [ -z "${floor}" ]; then
+              echo "::error::scripts/peer-floors.mjs printed no @langchain/langgraph-checkpoint floor; nothing would be pinned."
+              exit 1
+            fi
+            npm install --save-dev --save-exact "${floor}"
+          fi
+          git checkout -- package.json package-lock.json
+          npm ls --depth=0 @langchain/langgraph-checkpoint @langchain/langgraph-checkpoint-validation
 
       - name: Type-check the adapters against the pinned checkpoint package
         run: npm run typecheck:all
@@ -230,7 +255,7 @@ jobs:
         run: node .github/scripts/annotate-jest.mjs jest-conformance-matrix.json conformance
 
   hygiene:
-    name: repository hygiene (knip, depcheck, jscpd, actionlint, changelog)
+    name: repository hygiene (knip, jscpd, actionlint, changelog)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -241,7 +266,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -251,9 +276,6 @@ jobs:
 
       - name: Unused exports, dependencies and files (knip)
         run: npm run unused
-
-      - name: Unused and missing dependencies (depcheck)
-        run: npm run depcheck
 
       - name: Duplicated source (jscpd)
         run: npm run cpd
@@ -299,7 +321,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -311,17 +333,40 @@ jobs:
       # refuses a range it cannot reduce to one version rather than degrading
       # to "install whatever npm resolves" for a >=, an x-range or a ||
       # union. One spec per line, read with mapfile, so no spec can be split
-      # on a space. Each floor is then checked on its own, name and version:
-      # `npm ls` given several specs lists whichever match and exits 0 if any
-      # does, and given bare names it never looks at the version at all.
+      # on a space. The script's output is captured first and must be
+      # non-empty: `set -e` does not see a failure inside a process
+      # substitution, and an empty list would make the install below a no-op
+      # and the job a pass that tested nothing.
+      #
+      # The floors are written into package.json as exact devDependencies for
+      # this run only, so npm resolves one tree strictly, and a floor the dev
+      # dependencies' own ranges no longer admit fails here with npm's own
+      # ERESOLVE: the signal that the floor has to move, in a release. The
+      # manifest and lockfile are then restored, so the static guards read the
+      # committed ones while node_modules keeps the floor world. Each
+      # installed version is read from its own package.json, name and
+      # version, so a spec npm quietly resolved elsewhere cannot pass.
       - name: Install every declared peer at its floor
         run: |
           set -euo pipefail
-          mapfile -t floors < <(npm run --silent peer-floors)
+          FLOORS="$(npm run --silent peer-floors)"
+          mapfile -t floors <<< "${FLOORS}"
+          if [ "${#floors[@]}" -eq 0 ] || [ -z "${floors[0]}" ]; then
+            echo "::error::scripts/peer-floors.mjs produced no peer specs; nothing would be installed or tested."
+            exit 1
+          fi
           echo "installing ${floors[*]}"
-          npm install --no-save "${floors[@]}"
-          for floor in "${floors[@]}"; do
-            npm ls --depth=0 "$floor"
+          npm install --save-dev --save-exact "${floors[@]}"
+          git checkout -- package.json package-lock.json
+          for spec in "${floors[@]}"; do
+            name="${spec%@*}"
+            version="${spec##*@}"
+            installed="$(node -p "require('./node_modules/${name}/package.json').version")"
+            if [ "${installed}" != "${version}" ]; then
+              echo "::error::${name} is installed at ${installed}, not at ${version}."
+              exit 1
+            fi
+            echo "${name}@${installed}"
           done
 
       - name: Type-check and unit-test against the floors
@@ -341,7 +386,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -364,12 +409,14 @@ jobs:
     name: package smoke (npm pack + install + import)
     runs-on: ubuntu-latest
     # The steps below bound themselves: test:surface through
-    # scripts/run-with-timeout.mjs, each package-smoke test at 10 minutes and
-    # the consumer-types test at 15, all of them installing from the network.
-    # This bounds the whole job against everything else that could stall —
-    # npm ci, the build, pack:check — and sits above a single test's own bound,
-    # so a test that hangs on a slow registry fails with its own timeout and
-    # diagnostics instead of the job being cut off around it.
+    # scripts/run-with-timeout.mjs, and every command the package-smoke and
+    # consumer-types tests run — the installs from the network above all — at
+    # 10 minutes each, as a timeout on the command itself (a test-level timeout
+    # is a timer, which cannot fire while a synchronous command holds the event
+    # loop). This bounds the whole job against everything else that could
+    # stall — npm ci, the build, pack:check — and sits above a single command's
+    # own bound, so an install that hangs on a slow registry fails naming the
+    # command instead of the job being cut off around it.
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -378,7 +425,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm

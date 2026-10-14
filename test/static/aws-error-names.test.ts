@@ -46,6 +46,12 @@ const DOCUMENTED: Readonly<Record<string, string>> = {
   SignatureDoesNotMatch: 'Amazon S3 API Reference, Error responses',
   SlowDown: 'Amazon S3 API Reference, Error responses',
   TimeoutError: '@smithy/core retry TRANSIENT_ERROR_CODES; raised by @smithy/node-http-handler',
+  InvalidSignatureException:
+    '@smithy/core retry CLOCK_SKEW_ERROR_CODES, and isTransientError for one reporting "Signature expired"',
+  RequestTimeTooSkewed:
+    'Amazon S3 API Reference, Error responses; @smithy/core retry CLOCK_SKEW_ERROR_CODES',
+  CredentialsProviderError:
+    '@smithy/core config: the error the credential chain throws when no provider yields credentials',
   AbortError: 'the name the SDK and the platform give a request an AbortSignal cancelled',
   DOMException: "the web platform's own error type; redaction.ts recognises its tag",
 };

@@ -20,15 +20,17 @@ import type { HistoryContext } from '../internal/setup.js';
  * **Safe to run on a live session.** The count is written under a condition on
  * the value the row held when the count was computed, so an append landing in
  * between makes the write fail rather than clobber the increment; the tool then
- * recounts and tries again. Writing it unconditionally — which is what this did
- * — silently discarded concurrent appends on exactly the sessions an operator
- * reaches for this tool to fix.
+ * recounts and tries again. Written unconditionally, it would silently discard
+ * concurrent appends on exactly the sessions an operator reaches for this tool
+ * to fix. The count itself is a consistent read, because the pin can only
+ * catch a counter that moved, not a count taken off a stale replica.
  *
  * Accepts: `sessionId` — validated, and an existing session: repairing one that
  * does not exist would mean creating it. `signal` — aborts the reads.
  *
- * Returns: the count now stored, which is the number of messages a reader would
- * see.
+ * Returns: the count now stored: the session's live message rows, which is
+ * what `getMessages` returns, except for a row it drops as corrupt under
+ * `onCorruptMessage: 'skip'`, which is counted here all the same.
  *
  * Throws: `VALIDATION` naming `sessionId`; `CONDITION_CONFLICT` when the
  * session does not exist — rather than creating a permanent, TTL-less
@@ -42,9 +44,11 @@ import type { HistoryContext } from '../internal/setup.js';
  *
  * Guarantees: safe on a live session. The write is pinned to the value the row
  * held when the count was computed, so an append landing in between fails the
- * write rather than clobbering its increment, and the tool recounts. Expired
- * messages are not counted, so the repaired number agrees with what
- * `getMessages` returns rather than with what the table still holds.
+ * write rather than clobbering its increment, and the tool recounts; the rows
+ * are counted with a consistent read, so a chunk that just committed or was
+ * just rolled back is counted as it stands. Expired messages are not counted,
+ * so the repaired number agrees with what `getMessages` returns rather than
+ * with what the table still holds.
  */
 export async function reconcileMessageCount(
   context: HistoryContext,

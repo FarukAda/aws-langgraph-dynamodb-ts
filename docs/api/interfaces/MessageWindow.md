@@ -31,7 +31,7 @@ Return only messages appended before this instant (millisecond precision).
 Defined in: [history/types.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L63)
 
 Return only the newest `limit` messages — still in chronological order. An
-integer from 1 to `MAX_PAGE_LIMIT` (10,000): the page rule every `limit` in
+integer from 1 to 10,000: the page rule every `limit` in
 this package follows, with the one floor of 1 it has. `0` is refused rather
 than answered with nothing, since for a window into a conversation it is
 far more likely a bug than a request — and the empty window it would
