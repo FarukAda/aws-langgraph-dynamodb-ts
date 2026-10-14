@@ -85,12 +85,12 @@
     "pack:check": "node scripts/pack-check.mjs && publint && attw --pack ."
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1150.0",
-    "@aws-sdk/lib-dynamodb": "^3.1150.0",
+    "@aws-sdk/client-dynamodb": "^3.1151.0",
+    "@aws-sdk/lib-dynamodb": "^3.1151.0",
     "@aws-sdk/util-dynamodb": "^3.996.9"
   },
   "peerDependencies": {
-    "@aws-sdk/client-s3": "^3.1150.0",
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@langchain/core": "^1.2.17",
     "@langchain/langgraph-checkpoint": "^1.2.0"
   },
@@ -101,7 +101,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@aws-sdk/client-s3": "^3.1150.0",
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@eslint/js": "^10.0.1",
     "@langchain/aws": "^1.4.6",
     "@langchain/langgraph": "^1.5.0",
@@ -114,7 +114,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-perfectionist": "^5.12.1",
-    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-prettier": "^5.5.7",
     "eslint-plugin-unused-imports": "^4.4.1",
     "expect-type": "^1.4.0",
     "fast-check": "^4.10.2",
@@ -128,7 +128,7 @@
     "publint": "^0.3.25",
     "ts-jest": "^29.4.14",
     "typedoc": "^0.28.20",
-    "typedoc-plugin-markdown": "^4.13.1",
+    "typedoc-plugin-markdown": "^4.14.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.71.2",
     "zod": "^4.6.7"
