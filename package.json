@@ -85,8 +85,8 @@
     "pack:check": "node scripts/pack-check.mjs && publint && attw --pack ."
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1151.0",
-    "@aws-sdk/lib-dynamodb": "^3.1151.0",
+    "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/lib-dynamodb": "^3.1152.0",
     "@aws-sdk/util-dynamodb": "^3.996.9"
   },
   "peerDependencies": {
